@@ -15,7 +15,7 @@ inputs:
 
 Engineers, architects, and new hires routinely face architecture diagrams, infra topologies, ML pipelines, and state machines that are technically correct but practically unreadable — mega-diagrams that show everything at once and force the reader to do all the cognitive work. MermaidWeb fixes this by making large diagrams *navigable*: a 3-pane Markdown + Mermaid workspace with a family of progressive-disclosure interactions (collapse/expand, focus, path-tracing, depth slider) that let the reader peel a complex diagram back to exactly the layer they need.
 
-The product launches free and zero-friction — no signup required — with a premium tier for persistence, sharing, export, and branding. Subsequent waves layer in AI-assisted diagram generation and bidirectional code-to-diagram binding. The strategy is indie-scale and adoption-first: prove the comprehension thesis with real users before pricing pressure, then expand into the broader category of multi-format document comprehension that serves humans and AI agents alike.
+The product launches free and zero-friction — no signup required — with a premium tier for persistence, sharing, export, and branding. Subsequent waves layer in AI-assisted diagram generation and bidirectional code-to-diagram binding. The strategy is indie-scale and adoption-first: prove the comprehension thesis with real users before applying pricing pressure, then expand into the broader category of multi-format document comprehension over time.
 
 ## The Problem
 
@@ -25,7 +25,7 @@ Engineers don't struggle with diagrams because diagrams are bad — they struggl
 - **Authoring mode:** Writing Mermaid in mermaid.live or Mermaid Chart with no way to manage complexity as the diagram grows — diagrams either stay artificially small to remain readable, or balloon past the point of usefulness.
 - **Sharing mode:** Pasting screenshots into Slack, exporting SVGs that lose interactivity, or sending links to mermaid.live where the recipient sees the same impenetrable wall the author did.
 
-Adjacent tools (Lucidchart, Whimsical, Excalidraw) optimize for diagram *creation*, not *consumption*. AI code-context tools (Cursor, Cody, Sourcegraph) optimize for code, not diagrams. Mermaid Chart focuses on authoring polish. **No one is solving the comprehension problem.** The cost is real but quiet: slower onboarding, slower architecture reviews, knowledge that lives in someone's head because the diagram couldn't carry it.
+Adjacent tools (Lucidchart, Whimsical, Excalidraw) optimize for diagram *creation*, not *consumption*. AI code-context tools (Cursor, Cody, Sourcegraph) optimize for code, not diagrams. Mermaid Chart focuses on authoring polish. **No incumbent solves the comprehension problem on the diagram surface specifically** — the cost is real but quiet: slower onboarding, slower architecture reviews, knowledge that lives in someone's head because the diagram couldn't carry it.
 
 ## The Solution
 
@@ -45,10 +45,11 @@ Premium adds the practical layer engineers expect from a tool they rely on: acco
 The defensibility isn't a single feature — it's a **stack of compounding advantages**:
 
 1. **The disclosure family, not just collapse.** A weekend clone can copy click-to-collapse. Replicating four interaction modes that each map to a distinct comprehension pain (path tracing, mental-model construction, big-picture view) is meaningfully harder.
-2. **Comprehension-first positioning.** Every other tool in the space — Mermaid Chart, mermaid.live, Whimsical, Lucidchart — positions around *creating* diagrams. MermaidWeb positions around *understanding* them. That is an unoccupied frame.
-3. **Markdown-native, not diagram-only.** The 3-pane workspace competes with HackMD-for-engineers and Notion-for-architects, not with mermaid.live. Diagrams live where docs live.
-4. **First-mover on a real gap.** Mermaid Chart focuses on authoring; AI agents don't yet handle complex visual comprehension; Lucidchart/Whimsical are not chasing dev workflows. The window is real but not infinite.
-5. **Founder-fit.** Built by an experienced software engineer who hits this pain in his own work, has the working prototype already, and has the patience for indie/wedge mode rather than venture pace.
+2. **Comprehension-first positioning.** Mermaid Chart, mermaid.live, Whimsical, and Lucidchart all position around *creating* diagrams. MermaidWeb positions around *understanding* them. That's an unoccupied frame in the market.
+3. **Markdown-native, not diagram-only.** The 3-pane workspace sits at the intersection HackMD (no diagram intelligence), Notion (no Mermaid depth), and Mermaid Chart (no Markdown context) all miss. Diagrams live where docs live.
+4. **vs. the obvious free comparison (mermaid.live):** mermaid.live is a syntax sandbox. MermaidWeb is a workspace — disclosure family, command palette, minimap, persistent short share URLs, and a 3-pane editor are all things a syntax playground doesn't try to be.
+5. **First-mover on a real gap.** Mermaid Chart focuses on authoring; AI agents don't yet handle complex visual comprehension; Lucidchart/Whimsical are not chasing dev workflows. The window is real but not infinite.
+6. **Founder-fit.** Built by an experienced software engineer who hits this pain in his own work, has the working prototype already, and has the patience for indie/wedge mode rather than venture pace.
 
 The honest read: none of these are bulletproof on their own. Together — and shipped before incumbents notice — they're enough.
 
@@ -58,7 +59,13 @@ The honest read: none of these are bulletproof on their own. Together — and sh
 
 **Secondary: Tech leads, architects, and new hires** — the people who feel the comprehension pain most acutely (architects produce these diagrams; new hires are buried by them). They benefit from the same product without requiring it to be reshaped for them.
 
-**Future (2-3 year horizon):** **Teams and organizations** authoring shared knowledge bases, and **AI agents** consuming structured visual context to navigate codebases and documentation. The same comprehension primitives that help a human peel back a diagram help an agent retrieve a scoped subgraph.
+## Distribution & Conversion Loop
+
+The shared short URL is the **distribution engine**, not just a feature. Every time a user shares a diagram, the recipient lands on a working interactive workspace — with the disclosure family, the editor, and a frictionless path to creating their own diagram. Recipient → creator conversion is the loop the product is built around, instrumented from day one.
+
+The **upgrade trigger hypothesis** for premium is concrete: free users hit it when they (a) want their work to persist beyond a browser session, (b) want to share with view-vs-edit permissions, or (c) need to export with collapse states baked in for a slide deck or doc. Premium feature priorities are chosen against these triggers, not guessed.
+
+**Pre-launch path:** ship to 5–10 engineering friends/colleagues for ~2 weeks of real-diagram usage before public launch — catches UX-on-real-diagrams risks cheaply and seeds the first wave of shared URLs. Public launch then targets HN, Reddit r/programming, dev.to, the Mermaid community, and engineering Twitter/X.
 
 ## Success Criteria
 
@@ -70,12 +77,14 @@ The launch is **adoption-first, revenue-second**. Wave 1 is judged at a pre-comm
 | 🟡 Yellow | 50–200 WAU | Investigate retention loop before further build |
 | 🔴 Red | < 50 WAU | Pivot or sunset — F1a confirmed |
 
+The 200 WAU figure is a **directional target**, not a calibrated forecast — it's the line that distinguishes "thesis is working" from "thesis isn't" with the information available pre-launch, and may be re-calibrated against actual signal post-launch.
+
 **Secondary metrics, instrumented from day one:**
 - Diagrams created per active user
 - Diagrams shared per active user, recipient open rate, recipient → creator conversion
 - Returning author rate (the leading indicator of retention against the "intermittent reading" risk)
 
-Personal success at the 12–18 month horizon: clearing the 200 WAU bar, validating the comprehension thesis with real users, and earning the right to ship Waves 2 and 3.
+Personal success at the 12–18 month horizon: clearing the directional WAU bar, validating the comprehension thesis with real users, and earning the right to ship Waves 2 and 3.
 
 ## Scope
 
@@ -93,6 +102,7 @@ Personal success at the 12–18 month horizon: clearing the 200 WAU bar, validat
 - Notion / Confluence / GitHub embeds (V2)
 - IDE / browser extensions, mobile viewer (V2+)
 - Public diagram gallery, multi-repo support, CI-driven code↔diagram sync (skip / maybe)
+- **Open-sourcing the product** — MermaidWeb is a closed-source commercial product; OSS is not part of the strategy.
 
 ## Vision
 
@@ -100,18 +110,18 @@ Personal success at the 12–18 month horizon: clearing the 200 WAU bar, validat
 
 **Year 2-3:** MermaidWeb expands beyond Mermaid into a **multi-format diagram and document comprehension layer** — supporting D2, PlantUML, and adjacent visual formats — with team workspaces, deeper collaboration, and Code Connect mature enough to be a primary value prop. The product helps organizations make their internal documentation actually navigable, not just searchable.
 
-**The asymmetric bet:** as AI agents take on more of software engineering, they will need structured, navigable context over codebases and knowledge bases. The same comprehension primitives that help a human peel back a 500-node diagram help an agent retrieve a scoped subgraph. MermaidWeb's long-term position is to be that comprehension layer — for humans and machines.
+**Long-horizon optionality:** as AI agents take on more software-engineering work, structured navigable context over codebases and knowledge bases becomes increasingly valuable. The same comprehension primitives MermaidWeb builds for humans could one day serve agents as well — but this is a far-future possibility, not part of the near-term plan.
 
 ## Risks and What We're Doing About Them
 
 **Designed against (mitigated in Wave 1):**
 - **Intermittent-reading retention risk (F1a).** Authoring made first-class so daily usage replaces monthly reading; sharing instrumented as the leading indicator; pre-committed decision gate keeps execution honest.
-- **OSS clone of progressive disclosure.** The disclosure *family* (4 modes) raises the clone bar.
+- **OSS/clone of progressive disclosure.** The disclosure *family* (4 modes) raises the clone bar.
 - **URL length limits on shareable state.** Eliminated by backend storage from day one.
 
 **Explicitly accepted:**
-- Mermaid Chart or the Mermaid spec adding collapse — out of our control; first-mover and the broader product are the answer.
-- AI agents subsuming diagram comprehension — partially hedged by Wave 2 AI features and the long-term agent-as-consumer vision; tail risk accepted.
+- Mermaid Chart or the Mermaid spec adding collapse — out of our control; first-mover speed and Wave 2/3 differentiation are the answer.
+- AI agents subsuming diagram comprehension — partially hedged by Wave 2 AI features; tail risk accepted.
 - Side-project pace and burnout risk — accepted as indie reality; managed by wave staging, not formal mitigation.
 
 ## Open Decisions
