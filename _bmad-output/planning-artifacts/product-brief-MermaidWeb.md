@@ -1,11 +1,15 @@
 ---
 title: "Product Brief: MermaidWeb"
-status: "draft"
+status: "superseded-by-prd"
 created: "2026-05-06"
-updated: "2026-05-06"
+updated: "2026-05-08"
 inputs:
   - _bmad-output/brainstorming/brainstorming-session-2026-05-05-1740.md
+downstream:
+  - _bmad-output/planning-artifacts/prd.md
 ---
+
+> **Status note (2026-05-08):** This brief is preserved as the originating strategic document. The canonical, current source of truth for MermaidWeb requirements is now the PRD at `_bmad-output/planning-artifacts/prd.md`. Where this brief and the PRD differ, the PRD wins. Notable refinements made during PRD authoring are summarized at the bottom of this document under "PRD-stage Updates".
 
 # Product Brief: MermaidWeb
 
@@ -13,7 +17,7 @@ inputs:
 
 **MermaidWeb is the comprehension layer for technical documentation — starting with Mermaid diagrams, where the pain is sharpest.**
 
-Engineers, architects, and new hires routinely face architecture diagrams, infra topologies, ML pipelines, and state machines that are technically correct but practically unreadable — mega-diagrams that show everything at once and force the reader to do all the cognitive work. MermaidWeb fixes this by making large diagrams *navigable*: a 3-pane Markdown + Mermaid workspace with a family of progressive-disclosure interactions (collapse/expand, focus, path-tracing, depth slider) that let the reader peel a complex diagram back to exactly the layer they need.
+Engineers, architects, and new hires routinely face architecture diagrams, infra topologies, ML pipelines, and state machines that are technically correct but practically unreadable — mega-diagrams that show everything at once and force the reader to do all the cognitive work. MermaidWeb fixes this by making large diagrams *navigable*: a Markdown-native workspace combining source editing, rendered Markdown preview, and an interactive Mermaid canvas, paired with a family of progressive-disclosure interactions (collapse/expand, focus, path-tracing, depth slider) that let the reader peel a complex diagram back to exactly the layer they need. (Specific workspace layout — single-pane, two-pane, or multi-pane — is finalized during design; the Markdown-native, comprehension-first commitment is locked.)
 
 The product launches free and zero-friction — no signup required — with a premium tier for persistence, sharing, export, and branding. Subsequent waves layer in AI-assisted diagram generation and bidirectional code-to-diagram binding. The strategy is indie-scale and adoption-first: prove the comprehension thesis with real users before applying pricing pressure, then expand into the broader category of multi-format document comprehension over time.
 
@@ -29,7 +33,7 @@ Adjacent tools (Lucidchart, Whimsical, Excalidraw) optimize for diagram *creatio
 
 ## The Solution
 
-MermaidWeb is a web-based 3-pane workspace — Markdown source, rendered preview, and an interactive Mermaid canvas — built around a **progressive-disclosure family** that turns big diagrams into navigable ones:
+MermaidWeb is a web-based Markdown-native workspace — combining source editing, rendered Markdown preview, and an interactive Mermaid canvas — built around a **progressive-disclosure family** that turns big diagrams into navigable ones:
 
 - **Collapse/expand** — click any subgraph to fold it into a single parent node; click again to expand
 - **Focus mode** — click a node, fade everything not connected to it
@@ -46,7 +50,7 @@ The defensibility isn't a single feature — it's a **stack of compounding advan
 
 1. **The disclosure family, not just collapse.** A weekend clone can copy click-to-collapse. Replicating four interaction modes that each map to a distinct comprehension pain (path tracing, mental-model construction, big-picture view) is meaningfully harder.
 2. **Comprehension-first positioning.** Mermaid Chart, mermaid.live, Whimsical, and Lucidchart all position around *creating* diagrams. MermaidWeb positions around *understanding* them. That's an unoccupied frame in the market.
-3. **Markdown-native, not diagram-only.** The 3-pane workspace sits at the intersection HackMD (no diagram intelligence), Notion (no Mermaid depth), and Mermaid Chart (no Markdown context) all miss. Diagrams live where docs live.
+3. **Markdown-native, not diagram-only.** The workspace sits at the intersection HackMD (no diagram intelligence), Notion (no Mermaid depth), and Mermaid Chart (no Markdown context) all miss. Diagrams live where docs live.
 4. **vs. the obvious free comparison (mermaid.live):** mermaid.live is a syntax sandbox. MermaidWeb is a workspace — disclosure family, command palette, minimap, persistent short share URLs, and a 3-pane editor are all things a syntax playground doesn't try to be.
 5. **First-mover on a real gap.** Mermaid Chart focuses on authoring; AI agents don't yet handle complex visual comprehension; Lucidchart/Whimsical are not chasing dev workflows. The window is real but not infinite.
 6. **Founder-fit.** Built by an experienced software engineer who hits this pain in his own work, has the working prototype already, and has the patience for indie/wedge mode rather than venture pace.
@@ -89,7 +93,7 @@ Personal success at the 12–18 month horizon: clearing the directional WAU bar,
 ## Scope
 
 **Wave 1 — In scope (the real MVP):**
-- Free: 3-pane workspace, full Mermaid syntax editor, progressive-disclosure family (4 modes), command palette, minimap, backend-stored short share URLs, no-account access via session token
+- Free: Markdown-native workspace (layout finalized in design), full Mermaid syntax editor, progressive-disclosure family (4 modes), command palette, minimap, backend-stored short share URLs, no-account access via session token
 - Premium: account-bound save, share permissions, export with collapse states, custom themes/branding
 
 **Wave 2 (after Wave 1 validates):** AI-assisted diagram generation from code, from prose, and AI improvement of existing diagrams.
@@ -124,9 +128,21 @@ Personal success at the 12–18 month horizon: clearing the directional WAU bar,
 - AI agents subsuming diagram comprehension — partially hedged by Wave 2 AI features; tail risk accepted.
 - Side-project pace and burnout risk — accepted as indie reality; managed by wave staging, not formal mitigation.
 
+T
+## Strategic / scope decisions 
+
+- **Accessibility excluded for indie phase.** The PRD does not commit to WCAG conformance and marketing materials will not claim it until verified. Revisit at scale or with enterprise customers.
+- **SEO minimized.** Marketing landing page is indexable; all diagram pages return `noindex, nofollow` (privacy rule, not marketing decision).
+- **No public diagram gallery .** Upgraded from "skipped feature" in the brainstorm to architectural rule in the PRD.
+- **Phased delivery confirmed.** Wave 1.1 / 1.2 / 1.3 / V2 / Vision sequencing locked, with explicit triggers between phases tied to the 6-week / 200-WAU decision gate.
+
+
 ## Open Decisions
 
 1. **Launch date** — to be set; side projects without deadlines drift.
 2. **Wave 1 premium pricing** — likely $5–15/mo individual, finalized closer to launch.
 3. **Renderer technology** (SVG vs. Canvas vs. WebGL) — decided by an architecture spike against real-world diagrams of 200 / 500 / 1000+ nodes.
 4. **Annotations and diagram-diff view** — held in the Consider pile; revisit during build.
+
+> The full and current Open Decisions table (10 items, with owners, triggers, and defaults) lives in the PRD's Open Decisions section. Items 5–10 there cover: workspace pane count, payment processor (Stripe vs. Paddle), anonymous-diagram retention policy, LLM provider for Wave 1.2, and stack-level technology choices.
+
