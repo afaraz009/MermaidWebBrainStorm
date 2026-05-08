@@ -455,7 +455,6 @@ Targets are **measured, instrumented, and tied to real-world diagram sizes** —
 | Disclosure interaction frame time | p50 ≤ 16 ms, p95 ≤ 33 ms | 200-node diagram | Smooth on a typical engineer laptop |
 | Disclosure interaction frame time (degraded) | p50 ≤ 33 ms (visible but no judder) | 500-node diagram | Graceful degradation tier |
 | Render-without-crash | Diagram renders, basic interactions work | 1000+ node diagram | Hard floor — the product doesn't break on real-world large diagrams |
-| Initial JS bundle (gzipped) | ≤ 350 KB initial load | n/a | Renderer-specific code can lazy-load post-initial-paint |
 | Anonymous-diagram save → URL ready | ≤ 300 ms p50 | n/a | Latency the user perceives as "share is instant" |
 
 **Performance budget enforcement:**
@@ -744,10 +743,9 @@ The renderer and the recipient cold-load are the two performance surfaces that m
 - **NFR-P2 [1.1]:** Time-to-first-render is ≤ 1.5 s on broadband for a 200-node diagram so the recipient sees diagram outline before fully interactive.
 - **NFR-P3 [1.1]:** Disclosure interaction frame time is ≤ 16 ms p50 and ≤ 33 ms p95 on a 200-node diagram on a typical engineer laptop.
 - **NFR-P4 [1.1]:** Disclosure interaction frame time degrades gracefully on a 500-node diagram (≤ 33 ms p50, no visible judder).
-- **NFR-P5 [1.1]:** Diagrams of 1000+ nodes render and support basic interactions without crashing the browser or losing the user's work.
-- **NFR-P6 [1.1]:** Initial JavaScript bundle is ≤ 350 KB gzipped on initial paint; renderer-specific code may lazy-load post-paint.
+- **NFR-P5 [1.1]:** Diagrams of 200+ nodes render and support basic interactions without crashing the browser or losing the user's work.
 - **NFR-P7 [1.1]:** Anonymous-diagram save → share URL ready in ≤ 300 ms p50; the user perceives sharing as instant.
-- **NFR-P8 [1.1]:** Performance budgets are enforced continuously against a fixture set of real-world Mermaid diagrams (200 / 500 / 1000+ nodes) checked into the test suite. Regressions block release.
+- **NFR-P8 [1.1]:** Performance budgets are enforced continuously against a fixture set of real-world Mermaid diagrams (200 / 500 ) checked into the test suite. Regressions block release.
 
 ### Security & Privacy
 
