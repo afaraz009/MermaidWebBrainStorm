@@ -401,17 +401,23 @@ MermaidWeb is a browser-based **single-page application** (SPA) centered on an i
 
 ### Architecture Decisions (locked)
 
-These were locked during the brainstorm and brief and are repeated here as the binding decisions for the web-app surface:
+These were locked during the brainstorm, brief, and renderer-research session, and are the binding decisions for the web-app surface:
 
 - **SPA**, not MPA. Single-page workspace; share-recipient pages hydrate from the same SPA bundle.
 - **Backend persistence from day one** for both anonymous and premium diagrams (no URL-encoded state). Eliminates URL-length issues entirely.
 - **Mermaid is the only diagram format in v1.** D2/PlantUML are post-launch.
 - **Markdown is first-class.** A Markdown source surface and a rendered preview are part of the workspace; view-only mode (no editor) is rejected.
 - **Click is the primary disclosure trigger**, with keyboard shortcuts via the command palette.
+- **Rendering technology family: SVG.** Resolves Open Decision #2 below pending spike validation. Canvas and WebGL ruled out at the 200-node target — SVG's DOM-text affordances are first-class for Cmd+K search and SVG/PNG/PDF export, and disclosure interactions reduce to attribute mutations.
+- **Rendering pipeline: parser-only + dagre + d3-shape.** Mermaid is used **only** as a syntax parser; the rendering pipeline is owned. Dagre handles layout (the same library Mermaid uses internally, ensuring geometric equivalence); d3-shape `curveBasis` handles edge curves; elkjs is the lazy-loaded "Adaptive" alternative for layout.
+- **Multi-diagram-type strategy: Position 3 (hybrid).** The native pipeline renders flowcharts and supports the full disclosure family. All other Mermaid diagram types (sequence, class, state, ER, gantt, etc.) render via Mermaid's renderer as a viewer-only fallback with pan/zoom but no disclosure family. The disclosure family is flowchart-first by design — a flowchart-shaped solution to the comprehension pain that flowcharts uniquely have. Additional types graduate into native rendering and disclosure support based on post-launch demand.
+- **Drag-to-reposition uses pin-and-recalculate (Strategy 1).** When a node is dragged, only that node's position updates and its connected edges re-route locally. Full layout is not re-run on drag.
+
+**Detailed rationale, alternatives considered, and the validation spike spec:** see `_bmad-output/planning-artifacts/architecture-decisions-renderer.md`.
 
 ### Open Design Decisions (resolved during architecture / design phase)
 
-- **Renderer technology** (SVG vs. Canvas vs. WebGL) — decided by a 1–2-weekend architecture spike against real-world Mermaid diagrams of 200/500/1000+ nodes. Blocks the disclosure-family build.
+- **Renderer technology** — provisionally resolved this session as **SVG + parser-only stack** (see Architecture Decisions above). Final lock pending a 2–3-hour validation spike against a representative flowchart with nested subgraphs, including drag interaction. Decision tree from spike outcome is documented in `architecture-decisions-renderer.md`.
 - **Workspace layout** — single-pane vs. two-pane (e.g., source + canvas, with rendered Markdown inline) vs. multi-pane (source / rendered / canvas) is an open design choice. The brainstorm leaned multi-pane; the actual count is decided during design with real diagrams in front of real users. The Markdown-native + comprehension-first commitments hold regardless.
 
 ### Browser Support Matrix
@@ -462,6 +468,8 @@ Targets are **measured, instrumented, and tied to real-world diagram sizes** —
 - Frame-time budgets verified against fixtures continuously
 - Budget regressions block release in pre-launch beta and post-launch sprints
 
+**Spike-phase focus narrowing (renderer-research session, 2026-05-08):** the 200-node tier is the *primary* target for the architecture spike and Wave 1.1 build. The 500-node and 1000-node tiers remain valid product targets but are de-prioritized for spike validation; they are revisited once the 200-node pipeline is shipped and instrumented. The chosen stack (SVG + parser-only + dagre + d3-shape) remains compatible with raising the ceiling later.
+
 ### SEO Posture
 
 **Indie-stage stance: minimal. The marketing page is indexable; everything diagram-shaped is not.**
@@ -492,13 +500,15 @@ Content marketing, keyword strategy, structured data, sitemap optimization — d
 ### Implementation Considerations
 
 - **Stack-level choices deferred to architecture phase**, not locked in this PRD: front-end framework, state management, renderer (the blocking decision), backend stack, database, hosting, *and final workspace layout/pane count*. The PRD constrains the *shape* of decisions (SPA, backend-from-day-one, no public indexing of diagrams, performance budgets), not specific technologies or pane counts.
-- **Build order from brainstorm reaffirmed:**
-  1. Architecture spike — renderer choice (1–2 weekends)
+- **Build order from brainstorm reaffirmed (with spike re-scoped 2026-05-08):**
+  1. Architecture validation spike — 2–3 hours, validates the provisionally-resolved SVG + parser-only stack against a representative flowchart with nested subgraphs and drag interaction (replaces the 1–2-weekend bake-off; the bake-off question was resolved during the renderer-research session)
   2. Backend skeleton — anonymous diagram records, short URL generator, session token, share endpoint (1 weekend)
-  3. Disclosure family — collapse → depth slider → focus → path (4–6 weekends, in that order; cheapest first)
-  4. Workspace layout + Mermaid editor (2–3 weekends, pane count finalized here)
-  5. Command palette + minimap (2 weekends)
-  6. Analytics instrumentation continuously alongside, not retrofit
+  3. Native flowchart pipeline — parser adapter, IR normalizer, dagre layout, render model, SVG renderer (~3–5 weekends with coding-agent assistance)
+  4. Mermaid viewer fallback for non-flowchart types — pan/zoom only (~1 weekend)
+  5. Disclosure family on native pipeline — collapse → depth slider → focus → path (4–6 weekends, cheapest first)
+  6. Workspace layout + Mermaid editor (2–3 weekends, pane count finalized here)
+  7. Command palette + minimap (2 weekends)
+  8. Analytics instrumentation continuously alongside, not retrofit
 - **Pre-launch beta gate:** ship to 5–10 engineering friends/colleagues for ~2 weeks of real-diagram usage before any public launch
 - **Public launch channels** (recap from brief): HN, Reddit r/programming, dev.to, Mermaid community, engineering Twitter/X
 
@@ -660,12 +670,14 @@ Each FR is tagged with the phase in which it must first be available: **[1.1]** 
 
 ### Progressive Disclosure Family
 
-- **FR6 [1.1]:** Any user can collapse a subgraph into its parent node and re-expand it, reversibly.
-- **FR7 [1.1]:** Any user can enter a "focus" state on a selected node such that nodes not connected to it are visually de-emphasized.
-- **FR8 [1.1]:** Any user can select two nodes and have the path(s) between them visually highlighted (path mode). *Pre-approved fallback: may ship in 2–4-week fast-follow patch if intractable in Wave 1.1 budget.*
-- **FR9 [1.1]:** Any user can adjust a depth-based control such that the diagram auto-collapses everything below a chosen depth, reversibly.
-- **FR10 [1.1]:** Any user can exit any disclosure mode and return the diagram to its fully-expanded default state.
-- **FR11 [1.1]:** Disclosure interactions can be triggered both by direct manipulation (click) and by keyboard.
+The disclosure family is **flowchart-first by design** (resolved in renderer-research session, 2026-05-08). FR6–FR11 apply to flowchart and graph diagrams, where the comprehension pain is sharpest. Other Mermaid diagram types render as viewer-only fallbacks (see FR15a) and graduate into disclosure support post-launch based on demand.
+
+- **FR6 [1.1]:** Any user can collapse a subgraph into its parent node and re-expand it, reversibly. *(Flowchart / graph diagrams.)*
+- **FR7 [1.1]:** Any user can enter a "focus" state on a selected node such that nodes not connected to it are visually de-emphasized. *(Flowchart / graph diagrams.)*
+- **FR8 [1.1]:** Any user can select two nodes and have the path(s) between them visually highlighted (path mode). *(Flowchart / graph diagrams.)* *Pre-approved fallback: may ship in 2–4-week fast-follow patch if intractable in Wave 1.1 budget.*
+- **FR9 [1.1]:** Any user can adjust a depth-based control such that the diagram auto-collapses everything below a chosen depth, reversibly. *(Flowchart / graph diagrams.)*
+- **FR10 [1.1]:** Any user can exit any disclosure mode and return the diagram to its fully-expanded default state. *(Flowchart / graph diagrams.)*
+- **FR11 [1.1]:** Disclosure interactions can be triggered both by direct manipulation (click) and by keyboard. *(Flowchart / graph diagrams.)*
 
 ### Navigation & Wayfinding
 
@@ -673,6 +685,7 @@ Each FR is tagged with the phase in which it must first be available: **[1.1]** 
 - **FR13 [1.1]:** Any user can navigate to (focus / scroll to) a node selected from the command palette.
 - **FR14 [1.1]:** Any user can see a minimap that indicates the current viewport position relative to the full diagram.
 - **FR15 [1.1]:** Any user can pan and zoom the diagram canvas.
+- **FR15a [1.1]:** Any user can render a Markdown document containing **non-flowchart Mermaid diagram types** (sequence, class, state, ER, gantt, etc.) and have them render via Mermaid's renderer with pan/zoom support. The disclosure family does not apply to these diagrams in v1; the UI clearly indicates that disclosure interactions are flowchart-specific. Unknown or future Mermaid types fall back to this viewer path automatically.
 
 ### Persistence & Session Management
 
@@ -686,7 +699,7 @@ Each FR is tagged with the phase in which it must first be available: **[1.1]** 
 ### Sharing & Recipient Experience
 
 - **FR22 [1.1]:** Any user can copy or send a short URL that opens their diagram in a fully interactive workspace for the recipient.
-- **FR23 [1.1]:** A recipient opening a shared URL gets the same disclosure family, command palette, and minimap available to the original creator, without signing up.
+- **FR23 [1.1]:** A recipient opening a shared URL gets the same disclosure family (where the diagram type supports it — see FR6–FR11 and FR15a), command palette, and minimap available to the original creator, without signing up.
 - **FR24 [1.1]:** A recipient can create their own new diagram from any shared workspace in a single, obvious action.
 - **FR25 [1.1]:** A premium user can share a diagram with a chosen permission level (view-only or editable) such that recipients are restricted accordingly.
 
@@ -816,7 +829,7 @@ The following decisions are deliberately deferred. Each is named here so it does
 | # | Decision | Owner | Trigger / Deadline | Default if not decided in time |
 |---|----------|-------|---------------------|---------------------------------|
 | 1 | **Public launch date** | Founder | Set before architecture spike begins | Side-project drift — actively at risk per brainstorm; pick a calendar date even if soft |
-| 2 | **Renderer technology** (SVG / Canvas / WebGL) | Architecture spike | Before disclosure-family build (1–2 weekends in) | Blocks all disclosure-family work; cannot be skipped |
+| 2 | **Renderer technology** (SVG / Canvas / WebGL) | Architecture spike | Before disclosure-family build (1–2 weekends in) | **Provisionally resolved 2026-05-08:** SVG + parser-only + dagre + d3-shape (Architecture B). Final lock pending a 2–3-hour validation spike. See `architecture-decisions-renderer.md`. |
 | 3 | **Workspace layout / pane count** (single, two-pane, multi-pane) | Design phase | Before the workspace-and-editor build (Phase 1 step 4) | Fall back to multi-pane (source / preview / canvas) — the brainstorm leaning, but not locked |
 | 4 | **Wave 1.1 premium pricing** | Founder, pre-launch | Before payment processor integration | Likely $5–15/mo individual, finalized closer to launch |
 | 5 | **Payment processor** (Stripe vs. Paddle) | Founder, architecture phase | Before premium-tier build | Paddle preferred for EU VAT MOSS handling; Stripe acceptable; pick before billing code is written |
