@@ -1,0 +1,31 @@
+flowchart TD
+      Client[Client App]
+
+      subgraph Gateway[API Gateway]
+          Auth[Auth Service]
+          Rate[Rate Limiter]
+      end
+
+      subgraph Backend[Backend Services]
+          subgraph Orders[Order Domain]
+              OrderAPI[Order API]
+              OrderDB[(Order DB)]
+              OrderQueue[/Order Queue/]
+          end
+          subgraph Payments[Payment Domain]
+              PayAPI[Payment API]
+              PayDB[(Payment DB)]
+          end
+          Notif[Notification Service]
+      end
+
+      Client --> Auth
+      Auth --> Rate
+      Rate --> OrderAPI
+      Rate --> PayAPI
+      OrderAPI --> OrderDB
+      OrderAPI --> OrderQueue
+      OrderQueue --> Notif
+      PayAPI --> PayDB
+      PayAPI --> Notif
+      OrderAPI -.->|sync| PayAPI

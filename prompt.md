@@ -25,51 +25,15 @@
     mermaid-reference.html           # renders fixture via Mermaid (target)
     our-renderer.html                # renders fixture via custom pipeline (static)
     our-renderer-interactive.html    # custom pipeline + drag
-    src/
-      parser-adapter.ts              # mermaid source -> normalized IR
-      layout.ts                      # IR -> dagre layout -> positioned graph
-      renderer.ts                    # positioned graph -> SVG (with partial-update support)
-      drag.ts                        # mouse drag handlers (interactive page only)
-      main-static.ts                 # wires pipeline for our-renderer.html
-      main-interactive.ts            # wires pipeline + drag for our-renderer-interactive.html
+    src/                             # src folder
     SPIKE_NOTES.md                   # findings (max 400 words)
 
-  Fixture (fixture.mmd)
-
-  flowchart TD
-      Client[Client App]
-
-      subgraph Gateway[API Gateway]
-          Auth[Auth Service]
-          Rate[Rate Limiter]
-      end
-
-      subgraph Backend[Backend Services]
-          subgraph Orders[Order Domain]
-              OrderAPI[Order API]
-              OrderDB[(Order DB)]
-              OrderQueue[/Order Queue/]
-          end
-          subgraph Payments[Payment Domain]
-              PayAPI[Payment API]
-              PayDB[(Payment DB)]
-          end
-          Notif[Notification Service]
-      end
-
-      Client --> Auth
-      Auth --> Rate
-      Rate --> OrderAPI
-      Rate --> PayAPI
-      OrderAPI --> OrderDB
-      OrderAPI --> OrderQueue
-      OrderQueue --> Notif
-      PayAPI --> PayDB
-      PayAPI --> Notif
-      OrderAPI -.->|sync| PayAPI
+  Fixture (@Fixture.mmd)
+  
+  
 
   Variety in this fixture is intentional:
-  - Two-level subgraph nesting (Backend contains Orders and Payments)
+  - Two-level subgraph nesting (Backend contains Orders and Payments)w
   - Multiple node shapes (rect [...], cylinder [(...)], parallelogram [/.../])
   - A dotted edge with a label (-.->|sync|)
   - Edges crossing subgraph boundaries
@@ -77,14 +41,14 @@
 
   Pipeline requirements (in order)
 
-  1. Parser adapter (parser-adapter.ts)
+  1. Parser adapter 
 
   - Load fixture.mmd, call Mermaid's parser, return a normalized internal representation:
   
-  - Use mermaid.parse() and read from the returned data structure. If the public API is awkward, dig into mermaid/dist to find flowDb or equivalent. Do not write your own Mermaid parser.
+  - Use mermaid parser and read from the returned data structure. If the public API is awkward, dig into mermaid/dist to find flowDb or equivalent. Do not write your own Mermaid parser.
   - If extracting nested subgraphs is hard, document exactly what you tried and what Mermaid's API returned in SPIKE_NOTES.md. This is critical signal for the architecture decision.
 
-  1. Layout (layout.ts)
+  1. Layout 
 
   - Feed the IR to dagre. Use compound graph support (setParent()) for nested subgraphs.
   - Configure with rankdir: TB to match flowchart TD.
@@ -92,7 +56,7 @@
   - Honor pinned nodes: if node.pinned === true, skip dagre's positioning for that node and use node.x, node.y directly. (Used by drag — see below.)
   - Return positioned IR: nodes have { x, y, width, height }, edges have { points: [{x, y}, ...] }.
 
-  3. Renderer (renderer.ts)
+  1. Renderer 
 
   Two functions:
 
