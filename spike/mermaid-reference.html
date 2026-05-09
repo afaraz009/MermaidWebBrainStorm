@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Mermaid reference</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 16px; background: #fafafa; }
+    h1 { font-size: 14px; color: #555; margin: 0 0 12px; }
+    .mermaid { background: #fff; padding: 16px; border-radius: 6px; }
+  </style>
+</head>
+<body>
+  <h1>Mermaid (target) — official renderer via CDN</h1>
+  <pre class="mermaid">
+flowchart TD
+    Client[Client App]
+
+    subgraph Gateway[API Gateway]
+        Auth[Auth Service]
+        Rate[Rate Limiter]
+    end
+
+    subgraph Backend[Backend Services]
+        subgraph Orders[Order Domain]
+            OrderAPI[Order API]
+            OrderDB[(Order DB)]
+            OrderQueue[/Order Queue/]
+        end
+        subgraph Payments[Payment Domain]
+            PayAPI[Payment API]
+            PayDB[(Payment DB)]
+        end
+        Notif[Notification Service]
+    end
+
+    Client --&gt; Auth
+    Auth --&gt; Rate
+    Rate --&gt; OrderAPI
+    Rate --&gt; PayAPI
+    OrderAPI --&gt; OrderDB
+    OrderAPI --&gt; OrderQueue
+    OrderQueue --&gt; Notif
+    PayAPI --&gt; PayDB
+    PayAPI --&gt; Notif
+    OrderAPI -.-&gt;|sync| PayAPI
+  </pre>
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: true });
+  </script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Custom static renderer</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 16px; background: #fafafa; }
+    h1 { font-size: 14px; color: #555; margin: 0 0 12px; }
+    #mount { background: #fff; padding: 16px; border-radius: 6px; overflow: auto; }
+  </style>
+</head>
+<body>
+  <h1>Custom pipeline (static) — mermaid.parse → dagre → d3-shape → SVG</h1>
+  <div id="mount"></div>
+  <script type="module" src="/src/static-entry.ts"></script>
+</body>
+</html>
