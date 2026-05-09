@@ -19,7 +19,8 @@ async function main() {
   };
 
   try {
-    const src = await fetch('./fixture.mmd').then((r) => r.text());
+    const fixture = new URLSearchParams(location.search).get('fixture') ?? 'fixture.mmd';
+    const src = await fetch(`./${fixture}`).then((r) => r.text());
     ir = await parseFixture(src);
     renderAll();
 

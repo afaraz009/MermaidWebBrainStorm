@@ -5,7 +5,8 @@ import { renderFull } from './renderer';
 async function main() {
   const mount = document.getElementById('mount') as HTMLElement;
   try {
-    const src = await fetch('./fixture.mmd').then((r) => r.text());
+    const fixture = new URLSearchParams(location.search).get('fixture') ?? 'fixture.mmd';
+    const src = await fetch(`./${fixture}`).then((r) => r.text());
     const ir = await parseFixture(src);
     layoutIR(ir);
     renderFull(ir, mount);

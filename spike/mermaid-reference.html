@@ -7,46 +7,28 @@
     body { font-family: system-ui, sans-serif; margin: 16px; background: #fafafa; }
     h1 { font-size: 14px; color: #555; margin: 0 0 12px; }
     .mermaid { background: #fff; padding: 16px; border-radius: 6px; }
+    .err { color: #a00; white-space: pre-wrap; }
   </style>
 </head>
 <body>
   <h1>Mermaid (target) — official renderer via CDN</h1>
-  <pre class="mermaid">
-flowchart TD
-    Client[Client App]
-
-    subgraph Gateway[API Gateway]
-        Auth[Auth Service]
-        Rate[Rate Limiter]
-    end
-
-    subgraph Backend[Backend Services]
-        subgraph Orders[Order Domain]
-            OrderAPI[Order API]
-            OrderDB[(Order DB)]
-            OrderQueue[/Order Queue/]
-        end
-        subgraph Payments[Payment Domain]
-            PayAPI[Payment API]
-            PayDB[(Payment DB)]
-        end
-        Notif[Notification Service]
-    end
-
-    Client --&gt; Auth
-    Auth --&gt; Rate
-    Rate --&gt; OrderAPI
-    Rate --&gt; PayAPI
-    OrderAPI --&gt; OrderDB
-    OrderAPI --&gt; OrderQueue
-    OrderQueue --&gt; Notif
-    PayAPI --&gt; PayDB
-    PayAPI --&gt; Notif
-    OrderAPI -.-&gt;|sync| PayAPI
-  </pre>
+  <div id="container"></div>
   <script type="module">
     import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
-    mermaid.initialize({ startOnLoad: true });
+    const container = document.getElementById('container');
+    try {
+      const fixture = new URLSearchParams(location.search).get('fixture') ?? 'fixture.mmd';
+      const src = await fetch(`./${fixture}`).then((r) => r.text());
+      const pre = document.createElement('pre');
+      pre.className = 'mermaid';
+      pre.textContent = src;
+      container.appendChild(pre);
+      mermaid.initialize({ startOnLoad: false });
+      await mermaid.run({ nodes: [pre] });
+    } catch (err) {
+      container.innerHTML = `<pre class="err">${err.stack ?? String(err)}</pre>`;
+      console.error(err);
+    }
   </script>
 </body>
 </html>
