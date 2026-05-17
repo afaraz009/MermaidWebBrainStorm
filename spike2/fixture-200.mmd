@@ -1,0 +1,516 @@
+flowchart TD
+
+    Client[Client App]
+    Edge[Edge Gateway]
+
+    subgraph Web[Web]
+        subgraph Web_Auth[Auth]
+            WA001[Auth 1]
+            WA002[Auth 2]
+            WA003[Auth 3]
+            WA004[Auth 4]
+            WA005[(Auth 5)]
+            WA006[Auth 6]
+            WA007[/Auth 7/]
+            WA008[Auth 8]
+            WA009[Auth 9]
+            WA010[(Auth 10)]
+            WA011[Auth 11]
+            WA012[Auth 12]
+        end
+        subgraph Web_Session[Session]
+            WS013[Session 1]
+            WS014[Session 2]
+            WS015[Session 3]
+            WS016[Session 4]
+            WS017[(Session 5)]
+            WS018[Session 6]
+            WS019[/Session 7/]
+            WS020[Session 8]
+            WS021[Session 9]
+            WS022[(Session 10)]
+            WS023[Session 11]
+        end
+    end
+
+    subgraph Mobile[Mobile]
+        subgraph Mobile_Push[Push]
+            MP024[Push 1]
+            MP025[Push 2]
+            MP026[Push 3]
+            MP027[Push 4]
+            MP028[(Push 5)]
+            MP029[Push 6]
+            MP030[/Push 7/]
+            MP031[Push 8]
+            MP032[Push 9]
+            MP033[(Push 10)]
+            MP034[Push 11]
+            MP035[Push 12]
+        end
+        subgraph Mobile_Telemetry[Telemetry]
+            MT036[Telemetry 1]
+            MT037[Telemetry 2]
+            MT038[Telemetry 3]
+            MT039[Telemetry 4]
+            MT040[(Telemetry 5)]
+            MT041[Telemetry 6]
+            MT042[/Telemetry 7/]
+            MT043[Telemetry 8]
+            MT044[Telemetry 9]
+            MT045[(Telemetry 10)]
+            MT046[Telemetry 11]
+            MT047[Telemetry 12]
+        end
+    end
+
+    subgraph Orders[Orders]
+        subgraph Orders_Cart[Cart]
+            OC048[Cart 1]
+            OC049[Cart 2]
+            OC050[Cart 3]
+            OC051[Cart 4]
+            OC052[(Cart 5)]
+            OC053[Cart 6]
+            OC054[/Cart 7/]
+            OC055[Cart 8]
+            OC056[Cart 9]
+            OC057[(Cart 10)]
+            OC058[Cart 11]
+            OC059[Cart 12]
+        end
+        subgraph Orders_Checkout[Checkout]
+            OC060[Checkout 1]
+            OC061[Checkout 2]
+            OC062[Checkout 3]
+            OC063[Checkout 4]
+            OC064[(Checkout 5)]
+            OC065[Checkout 6]
+            OC066[/Checkout 7/]
+            OC067[Checkout 8]
+            OC068[Checkout 9]
+            OC069[(Checkout 10)]
+            OC070[Checkout 11]
+            OC071[Checkout 12]
+        end
+    end
+
+    subgraph Payments[Payments]
+        subgraph Payments_Billing[Billing]
+            PB072[Billing 1]
+            PB073[Billing 2]
+            PB074[Billing 3]
+            PB075[Billing 4]
+            PB076[(Billing 5)]
+            PB077[Billing 6]
+            PB078[/Billing 7/]
+            PB079[Billing 8]
+            PB080[Billing 9]
+            PB081[(Billing 10)]
+            PB082[Billing 11]
+            PB083[Billing 12]
+        end
+        subgraph Payments_Fraud[Fraud]
+            PF084[Fraud 1]
+            PF085[Fraud 2]
+            PF086[Fraud 3]
+            PF087[Fraud 4]
+            PF088[(Fraud 5)]
+            PF089[Fraud 6]
+            PF090[/Fraud 7/]
+            PF091[Fraud 8]
+            PF092[Fraud 9]
+            PF093[(Fraud 10)]
+            PF094[Fraud 11]
+        end
+    end
+
+    subgraph Inventory[Inventory]
+        subgraph Inventory_Catalog[Catalog]
+            IC095[Catalog 1]
+            IC096[Catalog 2]
+            IC097[Catalog 3]
+            IC098[Catalog 4]
+            IC099[(Catalog 5)]
+            IC100[Catalog 6]
+            IC101[/Catalog 7/]
+            IC102[Catalog 8]
+            IC103[Catalog 9]
+            IC104[(Catalog 10)]
+            IC105[Catalog 11]
+            IC106[Catalog 12]
+            IC107[Catalog 13]
+        end
+        subgraph Inventory_Stock[Stock]
+            IS108[Stock 1]
+            IS109[Stock 2]
+            IS110[Stock 3]
+            IS111[Stock 4]
+            IS112[(Stock 5)]
+            IS113[Stock 6]
+            IS114[/Stock 7/]
+            IS115[Stock 8]
+            IS116[Stock 9]
+            IS117[(Stock 10)]
+            IS118[Stock 11]
+        end
+    end
+
+    subgraph Shipping[Shipping]
+        subgraph Shipping_Routing[Routing]
+            SR119[Routing 1]
+            SR120[Routing 2]
+            SR121[Routing 3]
+            SR122[Routing 4]
+            SR123[(Routing 5)]
+            SR124[Routing 6]
+            SR125[/Routing 7/]
+            SR126[Routing 8]
+            SR127[Routing 9]
+            SR128[(Routing 10)]
+            SR129[Routing 11]
+            SR130[Routing 12]
+        end
+        subgraph Shipping_Tracking[Tracking]
+            ST131[Tracking 1]
+            ST132[Tracking 2]
+            ST133[Tracking 3]
+            ST134[Tracking 4]
+            ST135[(Tracking 5)]
+            ST136[Tracking 6]
+            ST137[/Tracking 7/]
+            ST138[Tracking 8]
+            ST139[Tracking 9]
+            ST140[(Tracking 10)]
+            ST141[Tracking 11]
+            ST142[Tracking 12]
+        end
+    end
+
+    subgraph Notifications[Notifications]
+        subgraph Notifications_Email[Email]
+            NE143[Email 1]
+            NE144[Email 2]
+            NE145[Email 3]
+            NE146[Email 4]
+            NE147[(Email 5)]
+            NE148[Email 6]
+            NE149[/Email 7/]
+            NE150[Email 8]
+            NE151[Email 9]
+            NE152[(Email 10)]
+            NE153[Email 11]
+        end
+        subgraph Notifications_SMS[SMS]
+            NS154[SMS 1]
+            NS155[SMS 2]
+            NS156[SMS 3]
+            NS157[SMS 4]
+            NS158[(SMS 5)]
+            NS159[SMS 6]
+            NS160[/SMS 7/]
+            NS161[SMS 8]
+            NS162[SMS 9]
+            NS163[(SMS 10)]
+            NS164[SMS 11]
+            NS165[SMS 12]
+        end
+    end
+
+    subgraph Analytics[Analytics]
+        subgraph Analytics_Ingest[Ingest]
+            AI166[Ingest 1]
+            AI167[Ingest 2]
+            AI168[Ingest 3]
+            AI169[Ingest 4]
+            AI170[(Ingest 5)]
+            AI171[Ingest 6]
+            AI172[/Ingest 7/]
+            AI173[Ingest 8]
+            AI174[Ingest 9]
+            AI175[(Ingest 10)]
+            AI176[Ingest 11]
+            AI177[Ingest 12]
+            AI178[Ingest 13]
+        end
+        subgraph Analytics_Reporting[Reporting]
+            AR179[Reporting 1]
+            AR180[Reporting 2]
+            AR181[Reporting 3]
+            AR182[Reporting 4]
+            AR183[(Reporting 5)]
+            AR184[Reporting 6]
+            AR185[/Reporting 7/]
+            AR186[Reporting 8]
+            AR187[Reporting 9]
+            AR188[(Reporting 10)]
+            AR189[Reporting 11]
+        end
+    end
+
+    Client --> Edge
+    Edge --> WA001
+    Edge --> MP024
+    Edge --> OC048
+    Edge --> PB072
+    Edge --> IC095
+    Edge --> SR119
+    Edge --> NE143
+    Edge --> AI166
+
+    WA001 --> WA002
+    WA001 --> WA003
+    WA002 --> WA003
+    WA003 --> WA004
+    WA004 --> WA005
+    WA004 --> WA006
+    WA005 --> WA006
+    WA006 --> WA007
+    WA007 --> WA008
+    WA007 --> WA009
+    WA008 --> WA009
+    WA009 --> WA010
+    WA010 --> WA011
+    WA010 --> WA012
+    WA011 --> WA012
+    WS013 --> WS014
+    WS013 --> WS015
+    WS014 --> WS015
+    WS015 --> WS016
+    WS016 --> WS017
+    WS016 --> WS018
+    WS017 --> WS018
+    WS018 --> WS019
+    WS019 --> WS020
+    WS019 --> WS021
+    WS020 --> WS021
+    WS021 --> WS022
+    WS022 --> WS023
+    MP024 --> MP025
+    MP024 --> MP026
+    MP025 --> MP026
+    MP026 --> MP027
+    MP027 --> MP028
+    MP027 --> MP029
+    MP028 --> MP029
+    MP029 --> MP030
+    MP030 --> MP031
+    MP030 --> MP032
+    MP031 --> MP032
+    MP032 --> MP033
+    MP033 --> MP034
+    MP033 --> MP035
+    MP034 --> MP035
+    MT036 --> MT037
+    MT036 --> MT038
+    MT037 --> MT038
+    MT038 --> MT039
+    MT039 --> MT040
+    MT039 --> MT041
+    MT040 --> MT041
+    MT041 --> MT042
+    MT042 --> MT043
+    MT042 --> MT044
+    MT043 --> MT044
+    MT044 --> MT045
+    MT045 --> MT046
+    MT045 --> MT047
+    MT046 --> MT047
+    OC048 --> OC049
+    OC048 --> OC050
+    OC049 --> OC050
+    OC050 --> OC051
+    OC051 --> OC052
+    OC051 --> OC053
+    OC052 --> OC053
+    OC053 --> OC054
+    OC054 --> OC055
+    OC054 --> OC056
+    OC055 --> OC056
+    OC056 --> OC057
+    OC057 --> OC058
+    OC057 --> OC059
+    OC058 --> OC059
+    OC060 --> OC061
+    OC060 --> OC062
+    OC061 --> OC062
+    OC062 --> OC063
+    OC063 --> OC064
+    OC063 --> OC065
+    OC064 --> OC065
+    OC065 --> OC066
+    OC066 --> OC067
+    OC066 --> OC068
+    OC067 --> OC068
+    OC068 --> OC069
+    OC069 --> OC070
+    OC069 --> OC071
+    OC070 --> OC071
+    PB072 --> PB073
+    PB072 --> PB074
+    PB073 --> PB074
+    PB074 --> PB075
+    PB075 --> PB076
+    PB075 --> PB077
+    PB076 --> PB077
+    PB077 --> PB078
+    PB078 --> PB079
+    PB078 --> PB080
+    PB079 --> PB080
+    PB080 --> PB081
+    PB081 --> PB082
+    PB081 --> PB083
+    PB082 --> PB083
+    PF084 --> PF085
+    PF084 --> PF086
+    PF085 --> PF086
+    PF086 --> PF087
+    PF087 --> PF088
+    PF087 --> PF089
+    PF088 --> PF089
+    PF089 --> PF090
+    PF090 --> PF091
+    PF090 --> PF092
+    PF091 --> PF092
+    PF092 --> PF093
+    PF093 --> PF094
+    IC095 --> IC096
+    IC095 --> IC097
+    IC096 --> IC097
+    IC097 --> IC098
+    IC098 --> IC099
+    IC098 --> IC100
+    IC099 --> IC100
+    IC100 --> IC101
+    IC101 --> IC102
+    IC101 --> IC103
+    IC102 --> IC103
+    IC103 --> IC104
+    IC104 --> IC105
+    IC104 --> IC106
+    IC105 --> IC106
+    IC106 --> IC107
+    IS108 --> IS109
+    IS108 --> IS110
+    IS109 --> IS110
+    IS110 --> IS111
+    IS111 --> IS112
+    IS111 --> IS113
+    IS112 --> IS113
+    IS113 --> IS114
+    IS114 --> IS115
+    IS114 --> IS116
+    IS115 --> IS116
+    IS116 --> IS117
+    IS117 --> IS118
+    SR119 --> SR120
+    SR119 --> SR121
+    SR120 --> SR121
+    SR121 --> SR122
+    SR122 --> SR123
+    SR122 --> SR124
+    SR123 --> SR124
+    SR124 --> SR125
+    SR125 --> SR126
+    SR125 --> SR127
+    SR126 --> SR127
+    SR127 --> SR128
+    SR128 --> SR129
+    SR128 --> SR130
+    SR129 --> SR130
+    ST131 --> ST132
+    ST131 --> ST133
+    ST132 --> ST133
+    ST133 --> ST134
+    ST134 --> ST135
+    ST134 --> ST136
+    ST135 --> ST136
+    ST136 --> ST137
+    ST137 --> ST138
+    ST137 --> ST139
+    ST138 --> ST139
+    ST139 --> ST140
+    ST140 --> ST141
+    ST140 --> ST142
+    ST141 --> ST142
+    NE143 --> NE144
+    NE143 --> NE145
+    NE144 --> NE145
+    NE145 --> NE146
+    NE146 --> NE147
+    NE146 --> NE148
+    NE147 --> NE148
+    NE148 --> NE149
+    NE149 --> NE150
+    NE149 --> NE151
+    NE150 --> NE151
+    NE151 --> NE152
+    NE152 --> NE153
+    NS154 --> NS155
+    NS154 --> NS156
+    NS155 --> NS156
+    NS156 --> NS157
+    NS157 --> NS158
+    NS157 --> NS159
+    NS158 --> NS159
+    NS159 --> NS160
+    NS160 --> NS161
+    NS160 --> NS162
+    NS161 --> NS162
+    NS162 --> NS163
+    NS163 --> NS164
+    NS163 --> NS165
+    NS164 --> NS165
+    AI166 --> AI167
+    AI166 --> AI168
+    AI167 --> AI168
+    AI168 --> AI169
+    AI169 --> AI170
+    AI169 --> AI171
+    AI170 --> AI171
+    AI171 --> AI172
+    AI172 --> AI173
+    AI172 --> AI174
+    AI173 --> AI174
+    AI174 --> AI175
+    AI175 --> AI176
+    AI175 --> AI177
+    AI176 --> AI177
+    AI177 --> AI178
+    AR179 --> AR180
+    AR179 --> AR181
+    AR180 --> AR181
+    AR181 --> AR182
+    AR182 --> AR183
+    AR182 --> AR184
+    AR183 --> AR184
+    AR184 --> AR185
+    AR185 --> AR186
+    AR185 --> AR187
+    AR186 --> AR187
+    AR187 --> AR188
+    AR188 --> AR189
+    WA007 --> WS013
+    MP030 --> MT036
+    OC054 --> OC060
+    PB078 --> PF084
+    IC101 --> IS108
+    SR125 --> ST131
+    NE148 --> NS154
+    AI172 --> AR179
+    ST139 --> WA008
+    OC057 --> WA007
+    OC060 --> PB074
+    ST138 --> MP024
+    PB076 --> MT044
+    NS164 --> AR184
+    PB082 --> WA002
+    IC103 --> NS155
+    OC053 --> NS158
+    MT038 --> IC095
+    IC105 --> NS157
+    AI172 --> PB072
+    PB075 --> IC096
+    OC048 -.->|sync| PB072
+    OC049 -.->|sync| PB073
+    OC050 -.->|sync| PB074

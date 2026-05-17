@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Spike 2 — A* edge routing on drop</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 16px; background: #fafafa; }
+    h1 { font-size: 14px; color: #555; margin: 0 0 12px; }
+    .toolbar { margin-bottom: 8px; display: flex; align-items: center; gap: 12px; }
+    .toolbar label { font-size: 13px; color: #444; display: flex; align-items: center; gap: 4px; cursor: pointer; }
+    button { font-family: inherit; padding: 6px 10px; border: 1px solid #888; background: #fff; border-radius: 4px; cursor: pointer; }
+    button:hover { background: #f0f0f0; }
+    #mount { background: #fff; padding: 16px; border-radius: 6px; overflow: auto; }
+  </style>
+</head>
+<body>
+  <h1>Custom pipeline + A* edge routing — drag a node, release to re-route around obstacles</h1>
+  <div class="toolbar">
+    <button id="reset">Reset Layout</button>
+    <label><input type="checkbox" id="grid-toggle"> Show A* grid</label>
+  </div>
+  <div id="mount"></div>
+  <script type="module" src="/src/entry.ts"></script>
+</body>
+</html>
