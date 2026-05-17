@@ -1,34 +1,28 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Mermaid reference</title>
+  <meta charset="UTF-8">
+  <title>Mermaid Reference</title>
   <style>
-    body { font-family: system-ui, sans-serif; margin: 16px; background: #fafafa; }
-    h1 { font-size: 14px; color: #555; margin: 0 0 12px; }
-    .mermaid { background: #fff; padding: 16px; border-radius: 6px; }
-    .err { color: #a00; white-space: pre-wrap; }
+    body { margin: 0; padding: 16px; font-family: sans-serif; background: #fff; }
+    h2 { margin: 0 0 12px; font-size: 14px; color: #666; }
+    .mermaid { max-width: 100%; }
   </style>
 </head>
 <body>
-  <h1>Mermaid (target) — official renderer via CDN</h1>
-  <div id="container"></div>
+  <h2>Mermaid Reference (target)</h2>
+  <div id="diagram"></div>
   <script type="module">
-    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs';
-    const container = document.getElementById('container');
-    try {
-      const fixture = new URLSearchParams(location.search).get('fixture') ?? 'fixture.mmd';
-      const src = await fetch(`./${fixture}`).then((r) => r.text());
-      const pre = document.createElement('pre');
-      pre.className = 'mermaid';
-      pre.textContent = src;
-      container.appendChild(pre);
-      mermaid.initialize({ startOnLoad: false });
-      await mermaid.run({ nodes: [pre] });
-    } catch (err) {
-      container.innerHTML = `<pre class="err">${err.stack ?? String(err)}</pre>`;
-      console.error(err);
-    }
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: false, theme: 'default' });
+
+    // fetch('./fixture200.mmd')
+    fetch('./fixture.mmd')
+      .then(r => r.text())
+      .then(async src => {
+        const { svg } = await mermaid.render('mermaid-svg', src);
+        document.getElementById('diagram').innerHTML = svg;
+      });
   </script>
 </body>
 </html>

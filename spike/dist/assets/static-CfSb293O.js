@@ -1,0 +1,1 @@
+import"./modulepreload-polyfill-BxR_cmXS.js";import{a as e,i as t,n}from"./renderer-BHuO_Pxl.js";async function r(){let r=await e(await fetch(`./fixture.mmd`).then(e=>e.text()));t(r),n(r,document.getElementById(`mount`))}r().catch(e=>{console.error(`Render failed:`,e),document.body.innerHTML=`<pre style="color:red">${e}\n\n${e.stack}</pre>`});

@@ -1,85 +1,124 @@
-// Grid-based A* for post-drop edge routing.
-// 8-connected, octile heuristic. Written from scratch — no external pathfinding lib.
+// Grid-based A* pathfinder. Pure module — no DOM, no IR dependency.
+// 8-way connectivity, Manhattan heuristic with diagonal correction,
+// binary min-heap open set, Uint8Array closed set.
 
-export interface Point { x: number; y: number; }
-export interface Obstacle { x: number; y: number; width: number; height: number; }
-
-export interface RouteRequest {
-  from: Point;            // source node center
-  to: Point;              // target node center
-  fromBox: Obstacle;      // source node bounds (excluded from obstacles)
-  toBox: Obstacle;        // target node bounds (excluded from obstacles)
-  obstacles: Obstacle[];  // every OTHER node
-  bounds: { width: number; height: number }; // canvas extent
+export interface AStarGrid {
+  cellSize: number;
+  cols: number;
+  rows: number;
+  originX: number;
+  originY: number;
+  blocked: Uint8Array;
 }
 
-export interface RouteResult {
-  path: Point[];
-  ok: boolean;
+export interface Cell {
+  cx: number;
+  cy: number;
 }
 
-// Tunables. Documented in SPIKE2_NOTES.md.
-export const CELL = 10;          // grid cell size in px
-export const OBSTACLE_PAD = 6;   // padding around blocked obstacles in px
 const SQRT2 = Math.SQRT2;
 
-// Compute the blocked-cell mask for visualization. Mirrors the masking logic in
-// routeEdge but takes a flat obstacle list (no from/to exclusions).
-export function buildBlockedMask(
-  obstacles: Obstacle[],
-  bounds: { width: number; height: number },
-): { cols: number; rows: number; blocked: Uint8Array } {
-  const cols = Math.max(2, Math.ceil(bounds.width / CELL));
-  const rows = Math.max(2, Math.ceil(bounds.height / CELL));
-  const blocked = new Uint8Array(cols * rows);
-  for (const ob of obstacles) {
-    const minX = Math.max(0, Math.floor((ob.x - ob.width / 2 - OBSTACLE_PAD) / CELL));
-    const maxX = Math.min(cols - 1, Math.ceil((ob.x + ob.width / 2 + OBSTACLE_PAD) / CELL));
-    const minY = Math.max(0, Math.floor((ob.y - ob.height / 2 - OBSTACLE_PAD) / CELL));
-    const maxY = Math.min(rows - 1, Math.ceil((ob.y + ob.height / 2 + OBSTACLE_PAD) / CELL));
-    for (let y = minY; y <= maxY; y++) {
-      for (let x = minX; x <= maxX; x++) {
-        const cx = x * CELL + CELL / 2;
-        const cy = y * CELL + CELL / 2;
-        const hw = ob.width / 2 + OBSTACLE_PAD;
-        const hh = ob.height / 2 + OBSTACLE_PAD;
-        if (cx >= ob.x - hw && cx <= ob.x + hw && cy >= ob.y - hh && cy <= ob.y + hh) {
-          blocked[y * cols + x] = 1;
+const NEIGHBORS_4: ReadonlyArray<readonly [number, number, number]> = [
+  [ 1,  0, 1],
+  [-1,  0, 1],
+  [ 0,  1, 1],
+  [ 0, -1, 1],
+];
+const NEIGHBORS_8: ReadonlyArray<readonly [number, number, number]> = [
+  [ 1,  0, 1],
+  [-1,  0, 1],
+  [ 0,  1, 1],
+  [ 0, -1, 1],
+  [ 1,  1, SQRT2],
+  [ 1, -1, SQRT2],
+  [-1,  1, SQRT2],
+  [-1, -1, SQRT2],
+];
+
+export type HeuristicName = 'manhattan' | 'octile' | 'euclidean' | 'chebyshev' | 'zero';
+export type Connectivity = 4 | 8;
+
+export interface FindPathOptions {
+  connectivity?: Connectivity;
+  cornerCut?: boolean;
+  heuristic?: HeuristicName;
+}
+
+export interface FindPathResult {
+  path: Cell[] | null;
+  closed: Uint8Array;
+  open: Uint8Array;
+  expanded: number;
+}
+
+function pickHeuristic(name: HeuristicName): (ax: number, ay: number, bx: number, by: number) => number {
+  switch (name) {
+    case 'manhattan': return (ax, ay, bx, by) => Math.abs(ax - bx) + Math.abs(ay - by);
+    case 'euclidean': return (ax, ay, bx, by) => Math.hypot(ax - bx, ay - by);
+    case 'chebyshev': return (ax, ay, bx, by) => Math.max(Math.abs(ax - bx), Math.abs(ay - by));
+    case 'zero':      return () => 0;
+    case 'octile':
+    default: return (ax, ay, bx, by) => {
+      const dx = Math.abs(ax - bx), dy = Math.abs(ay - by);
+      return (dx + dy) + (SQRT2 - 2) * Math.min(dx, dy);
+    };
+  }
+}
+
+export function inBounds(grid: AStarGrid, cx: number, cy: number): boolean {
+  return cx >= 0 && cy >= 0 && cx < grid.cols && cy < grid.rows;
+}
+
+export function isBlocked(grid: AStarGrid, cx: number, cy: number): boolean {
+  if (!inBounds(grid, cx, cy)) return true;
+  return grid.blocked[cy * grid.cols + cx] === 1;
+}
+
+export function worldToCell(grid: AStarGrid, x: number, y: number): Cell {
+  return {
+    cx: Math.floor((x - grid.originX) / grid.cellSize),
+    cy: Math.floor((y - grid.originY) / grid.cellSize),
+  };
+}
+
+export function cellToWorld(grid: AStarGrid, cx: number, cy: number): { x: number; y: number } {
+  return {
+    x: grid.originX + (cx + 0.5) * grid.cellSize,
+    y: grid.originY + (cy + 0.5) * grid.cellSize,
+  };
+}
+
+// If the requested cell is blocked, walk outward in a small spiral to find the
+// nearest free cell. Returns the original cell if nothing free is found within
+// `maxRadius`.
+export function nearestFreeCell(grid: AStarGrid, cell: Cell, maxRadius = 6): Cell {
+  if (!isBlocked(grid, cell.cx, cell.cy)) return cell;
+  for (let r = 1; r <= maxRadius; r++) {
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+        const ncx = cell.cx + dx;
+        const ncy = cell.cy + dy;
+        if (inBounds(grid, ncx, ncy) && !isBlocked(grid, ncx, ncy)) {
+          return { cx: ncx, cy: ncy };
         }
       }
     }
   }
-  return { cols, rows, blocked };
+  return cell;
 }
 
-function inRect(px: number, py: number, ob: Obstacle, pad: number): boolean {
-  const hw = ob.width / 2 + pad;
-  const hh = ob.height / 2 + pad;
-  return px >= ob.x - hw && px <= ob.x + hw && py >= ob.y - hh && py <= ob.y + hh;
-}
+// Binary min-heap keyed on `f`. We also store `h` for tie-breaking.
+interface HeapEntry { idx: number; f: number; h: number }
 
-// Rectangle border anchor: where a line from `from` to `to`'s center enters `to`.
-function rectAnchor(from: Point, to: Obstacle): Point {
-  const dx = from.x - to.x;
-  const dy = from.y - to.y;
-  if (dx === 0 && dy === 0) return { x: to.x, y: to.y };
-  const hw = to.width / 2;
-  const hh = to.height / 2;
-  const sx = Math.abs(dx) > 0 ? hw / Math.abs(dx) : Infinity;
-  const sy = Math.abs(dy) > 0 ? hh / Math.abs(dy) : Infinity;
-  const s = Math.min(sx, sy);
-  return { x: to.x + dx * s, y: to.y + dy * s };
-}
-
-// Minimal binary min-heap keyed by fScore.
 class MinHeap {
-  private data: { idx: number; f: number }[] = [];
-  get size() { return this.data.length; }
-  push(idx: number, f: number) {
-    this.data.push({ idx, f });
+  private data: HeapEntry[] = [];
+  size(): number { return this.data.length; }
+  push(e: HeapEntry): void {
+    this.data.push(e);
     this.bubbleUp(this.data.length - 1);
   }
-  pop(): number | undefined {
+  pop(): HeapEntry | undefined {
     if (this.data.length === 0) return undefined;
     const top = this.data[0];
     const last = this.data.pop()!;
@@ -87,189 +126,124 @@ class MinHeap {
       this.data[0] = last;
       this.sinkDown(0);
     }
-    return top.idx;
+    return top;
   }
-  private bubbleUp(i: number) {
-    const item = this.data[i];
+  private less(a: HeapEntry, b: HeapEntry): boolean {
+    if (a.f !== b.f) return a.f < b.f;
+    return a.h < b.h;
+  }
+  private bubbleUp(i: number): void {
     while (i > 0) {
       const parent = (i - 1) >> 1;
-      if (this.data[parent].f <= item.f) break;
-      this.data[i] = this.data[parent];
-      i = parent;
+      if (this.less(this.data[i], this.data[parent])) {
+        [this.data[i], this.data[parent]] = [this.data[parent], this.data[i]];
+        i = parent;
+      } else break;
     }
-    this.data[i] = item;
   }
-  private sinkDown(i: number) {
+  private sinkDown(i: number): void {
     const n = this.data.length;
-    const item = this.data[i];
-    for (;;) {
-      const l = 2 * i + 1, r = 2 * i + 2;
-      let smallest = i;
-      let sf = item.f;
-      if (l < n && this.data[l].f < sf) { smallest = l; sf = this.data[l].f; }
-      if (r < n && this.data[r].f < sf) { smallest = r; sf = this.data[r].f; }
-      if (smallest === i) break;
-      this.data[i] = this.data[smallest];
-      i = smallest;
-    }
-    this.data[i] = item;
-  }
-}
-
-function octile(dx: number, dy: number): number {
-  const adx = Math.abs(dx), ady = Math.abs(dy);
-  return (adx > ady) ? (adx + (SQRT2 - 1) * ady) : (ady + (SQRT2 - 1) * adx);
-}
-
-// Find nearest unblocked cell within radius `maxR` (in cells) of (cx, cy).
-function nearestFree(blocked: Uint8Array, cols: number, rows: number, cx: number, cy: number, maxR: number): number {
-  const inBounds = (x: number, y: number) => x >= 0 && x < cols && y >= 0 && y < rows;
-  if (inBounds(cx, cy) && !blocked[cy * cols + cx]) return cy * cols + cx;
-  for (let r = 1; r <= maxR; r++) {
-    for (let dy = -r; dy <= r; dy++) {
-      for (let dx = -r; dx <= r; dx++) {
-        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue;
-        const x = cx + dx, y = cy + dy;
-        if (inBounds(x, y) && !blocked[y * cols + x]) return y * cols + x;
-      }
+    while (true) {
+      const l = i * 2 + 1;
+      const r = i * 2 + 2;
+      let best = i;
+      if (l < n && this.less(this.data[l], this.data[best])) best = l;
+      if (r < n && this.less(this.data[r], this.data[best])) best = r;
+      if (best === i) break;
+      [this.data[i], this.data[best]] = [this.data[best], this.data[i]];
+      i = best;
     }
   }
-  return -1;
 }
 
-// Collapse colinear runs: drop any waypoint whose neighbors form the same direction.
-function collapseColinear(path: Point[]): Point[] {
-  if (path.length < 3) return path;
-  const out: Point[] = [path[0]];
-  for (let i = 1; i < path.length - 1; i++) {
-    const a = out[out.length - 1], b = path[i], c = path[i + 1];
-    const dx1 = b.x - a.x, dy1 = b.y - a.y;
-    const dx2 = c.x - b.x, dy2 = c.y - b.y;
-    // Same direction if cross product is 0 AND dot product > 0.
-    const cross = dx1 * dy2 - dy1 * dx2;
-    const dot = dx1 * dx2 + dy1 * dy2;
-    if (cross === 0 && dot > 0) continue;
-    out.push(b);
-  }
-  out.push(path[path.length - 1]);
-  return out;
-}
+export function findPath(
+  grid: AStarGrid,
+  start: Cell,
+  goal: Cell,
+  options: FindPathOptions = {}
+): FindPathResult {
+  const connectivity: Connectivity = options.connectivity ?? 8;
+  const cornerCut = options.cornerCut ?? false;
+  const heuristic = pickHeuristic(options.heuristic ?? 'octile');
+  const neighbors = connectivity === 4 ? NEIGHBORS_4 : NEIGHBORS_8;
 
-export function routeEdge(req: RouteRequest): RouteResult {
-  const cols = Math.max(2, Math.ceil(req.bounds.width / CELL));
-  const rows = Math.max(2, Math.ceil(req.bounds.height / CELL));
-  const blocked = new Uint8Array(cols * rows);
+  const { cols, rows } = grid;
+  const total = cols * rows;
+  const closed = new Uint8Array(total);
+  const inOpen = new Uint8Array(total);
 
-  // Mark obstacles (excluding fromBox / toBox).
-  for (const ob of req.obstacles) {
-    if (ob === req.fromBox || ob === req.toBox) continue;
-    const minX = Math.max(0, Math.floor((ob.x - ob.width / 2 - OBSTACLE_PAD) / CELL));
-    const maxX = Math.min(cols - 1, Math.ceil((ob.x + ob.width / 2 + OBSTACLE_PAD) / CELL));
-    const minY = Math.max(0, Math.floor((ob.y - ob.height / 2 - OBSTACLE_PAD) / CELL));
-    const maxY = Math.min(rows - 1, Math.ceil((ob.y + ob.height / 2 + OBSTACLE_PAD) / CELL));
-    for (let y = minY; y <= maxY; y++) {
-      for (let x = minX; x <= maxX; x++) {
-        const cx = x * CELL + CELL / 2;
-        const cy = y * CELL + CELL / 2;
-        if (inRect(cx, cy, ob, OBSTACLE_PAD)) blocked[y * cols + x] = 1;
-      }
-    }
+  if (!inBounds(grid, start.cx, start.cy) || !inBounds(grid, goal.cx, goal.cy)
+      || isBlocked(grid, start.cx, start.cy) || isBlocked(grid, goal.cx, goal.cy)) {
+    return { path: null, closed, open: inOpen, expanded: 0 };
   }
 
-  // Cell-coord helpers.
-  const cellOf = (p: Point) => ({
-    cx: Math.max(0, Math.min(cols - 1, Math.floor(p.x / CELL))),
-    cy: Math.max(0, Math.min(rows - 1, Math.floor(p.y / CELL))),
-  });
-  const cellCenter = (idx: number): Point => {
-    const cy = Math.floor(idx / cols);
-    const cx = idx - cy * cols;
-    return { x: cx * CELL + CELL / 2, y: cy * CELL + CELL / 2 };
-  };
+  const gScore = new Float64Array(total); gScore.fill(Infinity);
+  const cameFrom = new Int32Array(total); cameFrom.fill(-1);
 
-  // Start/goal: cell just outside each box on the side facing the other endpoint.
-  const fromAnchor = rectAnchor(req.to, req.fromBox);
-  const toAnchor = rectAnchor(req.from, req.toBox);
-  // Step one cell outward beyond the anchor.
-  const fdx = req.to.x - req.from.x, fdy = req.to.y - req.from.y;
-  const fmag = Math.hypot(fdx, fdy) || 1;
-  const startPoint = { x: fromAnchor.x + (fdx / fmag) * CELL, y: fromAnchor.y + (fdy / fmag) * CELL };
-  const goalPoint  = { x: toAnchor.x  - (fdx / fmag) * CELL, y: toAnchor.y  - (fdy / fmag) * CELL };
-
-  const sCell = cellOf(startPoint);
-  const gCell = cellOf(goalPoint);
-  const startIdx = nearestFree(blocked, cols, rows, sCell.cx, sCell.cy, 3);
-  const goalIdx  = nearestFree(blocked, cols, rows, gCell.cx, gCell.cy, 3);
-
-  if (startIdx < 0 || goalIdx < 0) {
-    return { ok: false, path: [req.from, req.to] };
-  }
-
-  const gScore = new Float64Array(cols * rows).fill(Infinity);
+  const startIdx = start.cy * cols + start.cx;
+  const goalIdx = goal.cy * cols + goal.cx;
   gScore[startIdx] = 0;
-  const cameFrom = new Int32Array(cols * rows).fill(-1);
-  const closed = new Uint8Array(cols * rows);
+
   const open = new MinHeap();
-  const gy = Math.floor(goalIdx / cols), gx = goalIdx - gy * cols;
-  const sy = Math.floor(startIdx / cols), sx = startIdx - sy * cols;
-  open.push(startIdx, octile(gx - sx, gy - sy));
+  const h0 = heuristic(start.cx, start.cy, goal.cx, goal.cy);
+  open.push({ idx: startIdx, f: h0, h: h0 });
+  inOpen[startIdx] = 1;
 
-  const MAX_ITER = cols * rows;
-  let iter = 0;
+  let expanded = 0;
 
-  const dirs = [
-    [1, 0, 1], [-1, 0, 1], [0, 1, 1], [0, -1, 1],
-    [1, 1, SQRT2], [1, -1, SQRT2], [-1, 1, SQRT2], [-1, -1, SQRT2],
-  ] as const;
+  while (open.size() > 0) {
+    const current = open.pop()!;
+    if (closed[current.idx] === 1) continue;
+    closed[current.idx] = 1;
+    inOpen[current.idx] = 0;
+    expanded++;
 
-  let found = false;
-  while (open.size > 0 && iter < MAX_ITER) {
-    iter++;
-    const cur = open.pop()!;
-    if (cur === goalIdx) { found = true; break; }
-    if (closed[cur]) continue;
-    closed[cur] = 1;
-    const cy = Math.floor(cur / cols), cx = cur - cy * cols;
-    const curG = gScore[cur];
-    for (const [dx, dy, cost] of dirs) {
-      const nx = cx + dx, ny = cy + dy;
-      if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
-      const nIdx = ny * cols + nx;
-      if (blocked[nIdx] || closed[nIdx]) continue;
-      // Disallow corner-cutting through blocked cardinals when moving diagonally.
-      if (dx !== 0 && dy !== 0) {
-        if (blocked[cy * cols + nx] || blocked[ny * cols + cx]) continue;
+    if (current.idx === goalIdx) {
+      return { path: reconstruct(cameFrom, current.idx, cols), closed, open: inOpen, expanded };
+    }
+
+    const cx = current.idx % cols;
+    const cy = (current.idx - cx) / cols;
+    const gCur = gScore[current.idx];
+
+    for (const [dx, dy, cost] of neighbors) {
+      const ncx = cx + dx;
+      const ncy = cy + dy;
+      if (!inBounds(grid, ncx, ncy)) continue;
+      const nIdx = ncy * cols + ncx;
+      if (closed[nIdx] === 1) continue;
+      if (grid.blocked[nIdx] === 1) continue;
+
+      // No corner-cutting: diagonal moves require both orthogonal neighbors to
+      // be free, so the path can't slip through the corner of an obstacle.
+      if (!cornerCut && dx !== 0 && dy !== 0) {
+        if (grid.blocked[cy * cols + ncx] === 1) continue;
+        if (grid.blocked[ncy * cols + cx] === 1) continue;
       }
-      const tentative = curG + cost;
+
+      const tentative = gCur + cost;
       if (tentative < gScore[nIdx]) {
         gScore[nIdx] = tentative;
-        cameFrom[nIdx] = cur;
-        const h = octile(gx - nx, gy - ny);
-        open.push(nIdx, tentative + h);
+        cameFrom[nIdx] = current.idx;
+        const h = heuristic(ncx, ncy, goal.cx, goal.cy);
+        open.push({ idx: nIdx, f: tentative + h, h });
+        inOpen[nIdx] = 1;
       }
     }
   }
 
-  if (!found) {
-    return { ok: false, path: [req.from, req.to] };
+  return { path: null, closed, open: inOpen, expanded };
+}
+
+function reconstruct(cameFrom: Int32Array, endIdx: number, cols: number): Cell[] {
+  const out: Cell[] = [];
+  let cur = endIdx;
+  while (cur !== -1) {
+    const cx = cur % cols;
+    const cy = (cur - cx) / cols;
+    out.push({ cx, cy });
+    cur = cameFrom[cur];
   }
-
-  // Reconstruct.
-  const cells: number[] = [];
-  for (let c = goalIdx; c !== -1; c = cameFrom[c]) {
-    cells.push(c);
-    if (c === startIdx) break;
-  }
-  cells.reverse();
-  let waypoints = cells.map(cellCenter);
-
-  // Smooth: collapse colinear runs.
-  waypoints = collapseColinear(waypoints);
-
-  // Add border anchor tails so the edge terminates at the node rectangle.
-  const srcBorder = rectAnchor(waypoints[0] ?? req.to, req.fromBox);
-  const dstBorder = rectAnchor(waypoints[waypoints.length - 1] ?? req.from, req.toBox);
-  const path = [srcBorder, ...waypoints, dstBorder];
-
-  return { ok: true, path };
+  out.reverse();
+  return out;
 }

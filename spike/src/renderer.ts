@@ -1,346 +1,489 @@
 import { line, curveBasis } from 'd3-shape';
-import type { IR, IREdge, IRNode } from './types';
+import type { IR, IREdge, IRSubgraph, IRNode } from './types.js';
+import { clipToBorder } from './border.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
+const PADDING = 20;
+const ARROW_TIP_LEN = 10;
+const ARROW_MARKER_ID = 'arrow';
 
-const lineGen = line<{ x: number; y: number }>()
-  .curve(curveBasis)
-  .x((d) => d.x)
-  .y((d) => d.y);
+// Safe edge key: uses '::' separator (node IDs in Mermaid cannot contain '::')
+function edgeKey(from: string, to: string): string {
+  return `${from}::${to}`;
+}
 
-export interface RenderState {
-  svg: SVGSVGElement;
+interface BBox { x: number; y: number; w: number; h: number }
+
+// Data attached to the mount element so drag can update edges and subgraphs
+// without rebuilding the SVG. `originalPoints` holds the canonical dagre route
+// — drag never touches it. `displayPoints` is the transient drag overlay used
+// for the live SVG `d` attribute.
+interface MountMeta {
   ir: IR;
-  adjacency: Map<string, string[]>;
-  // For each subgraph, its direct child node IDs and direct child subgraph IDs.
-  // Used to recompute bounds bottom-up when a descendant moves.
-  subgraphChildren: Map<string, { nodeIds: string[]; subgraphIds: string[] }>;
-  // For each leaf node, its parent subgraph chain (innermost first). Empty if at root.
-  nodeAncestors: Map<string, string[]>;
+  adjacency: Map<string, string[]>;     // nodeId -> edgeKey[]
+  edgeMap: Map<string, IREdge>;         // edgeKey -> IREdge
+  displayPoints: Map<string, { x: number; y: number }[]>; // edgeKey -> live points
+  subgraphRects: Map<string, SVGRectElement>; // sgId -> <rect>
+  subgraphLabels: Map<string, SVGTextElement>; // sgId -> <text>
 }
 
-const edgeKey = (e: { from: string; to: string }) => `${e.from}->${e.to}`;
-
-function svgEl<K extends keyof SVGElementTagNameMap>(tag: K): SVGElementTagNameMap[K] {
-  return document.createElementNS(SVG_NS, tag) as SVGElementTagNameMap[K];
+function el(tag: string): SVGElement {
+  return document.createElementNS(SVG_NS, tag) as SVGElement;
 }
 
-function defs(): SVGDefsElement {
-  const d = svgEl('defs');
-  const marker = svgEl('marker');
-  marker.setAttribute('id', 'arrow');
-  marker.setAttribute('viewBox', '0 -5 10 10');
-  marker.setAttribute('refX', '8');
-  marker.setAttribute('refY', '0');
-  marker.setAttribute('markerWidth', '8');
-  marker.setAttribute('markerHeight', '8');
-  marker.setAttribute('orient', 'auto');
-  const path = svgEl('path');
-  path.setAttribute('d', 'M0,-5L10,0L0,5');
-  path.setAttribute('fill', '#555');
-  marker.appendChild(path);
-  d.appendChild(marker);
-  return d;
+// Duplicate endpoints so curveBasis passes exactly through the first and last waypoint.
+function anchoredPts(pts: { x: number; y: number }[]): { x: number; y: number }[] {
+  return [pts[0], ...pts, pts[pts.length - 1]];
 }
 
-function renderSubgraph(sg: IR['subgraphs'][number]): SVGGElement {
-  const g = svgEl('g');
-  g.setAttribute('data-subgraph-id', sg.id);
-  const x = (sg.x ?? 0) - (sg.width ?? 0) / 2;
-  const y = (sg.y ?? 0) - (sg.height ?? 0) / 2;
-  const rect = svgEl('rect');
-  rect.setAttribute('x', String(x));
-  rect.setAttribute('y', String(y));
-  rect.setAttribute('width', String(sg.width ?? 0));
-  rect.setAttribute('height', String(sg.height ?? 0));
-  rect.setAttribute('fill', 'rgba(120, 140, 200, 0.06)');
-  rect.setAttribute('stroke', '#8a9bd0');
-  rect.setAttribute('stroke-dasharray', '3,3');
-  rect.setAttribute('rx', '6');
-  g.appendChild(rect);
+const curveGen = line<{ x: number; y: number }>().x(d => d.x).y(d => d.y).curve(curveBasis);
 
-  const text = svgEl('text');
-  text.setAttribute('x', String(x + 8));
-  text.setAttribute('y', String(y + 16));
-  text.setAttribute('font-size', '12');
-  text.setAttribute('font-family', 'system-ui, sans-serif');
-  text.setAttribute('fill', '#445');
-  text.textContent = sg.label;
-  g.appendChild(text);
-  return g;
-}
-
-function renderNode(n: IRNode): SVGGElement {
-  const g = svgEl('g');
-  g.setAttribute('data-node-id', n.id);
-  g.setAttribute('transform', `translate(${n.x ?? 0}, ${n.y ?? 0})`);
-  g.style.cursor = 'grab';
-
-  // TODO: switch on n.shape — cylinder/parallelogram/etc. Spike uses rectangles only.
-  const w = n.width ?? 80;
-  const h = n.height ?? 40;
-  const rect = svgEl('rect');
-  rect.setAttribute('x', String(-w / 2));
-  rect.setAttribute('y', String(-h / 2));
-  rect.setAttribute('width', String(w));
-  rect.setAttribute('height', String(h));
-  rect.setAttribute('rx', '4');
-  rect.setAttribute('fill', '#fff');
-  rect.setAttribute('stroke', '#333');
-  rect.setAttribute('stroke-width', '1.5');
-  g.appendChild(rect);
-
-  const text = svgEl('text');
-  text.setAttribute('text-anchor', 'middle');
-  text.setAttribute('dominant-baseline', 'middle');
-  text.setAttribute('font-size', '13');
-  text.setAttribute('font-family', 'system-ui, sans-serif');
-  text.setAttribute('fill', '#222');
-  text.textContent = n.label;
-  g.appendChild(text);
-  return g;
-}
-
-function renderEdge(e: IREdge): SVGGElement {
-  const g = svgEl('g');
-  g.setAttribute('data-edge-id', edgeKey(e));
-  const path = svgEl('path');
-  const d = e.points && e.points.length >= 2 ? lineGen(e.points) : '';
-  path.setAttribute('d', d ?? '');
-  path.setAttribute('fill', 'none');
-  path.setAttribute('stroke', '#555');
-  path.setAttribute('stroke-width', '1.5');
-  path.setAttribute('marker-end', 'url(#arrow)');
-  if (e.style === 'dotted') path.setAttribute('stroke-dasharray', '5,5');
-  g.appendChild(path);
-
-  if (e.label && e.points && e.points.length > 0) {
-    const mid = e.points[Math.floor(e.points.length / 2)];
-    const t = svgEl('text');
-    t.setAttribute('x', String(mid.x));
-    t.setAttribute('y', String(mid.y - 4));
-    t.setAttribute('text-anchor', 'middle');
-    t.setAttribute('font-size', '11');
-    t.setAttribute('font-family', 'system-ui, sans-serif');
-    t.setAttribute('fill', '#445');
-    t.textContent = e.label;
-    g.appendChild(t);
-  }
-  return g;
-}
-
-function computeBounds(ir: IR): { width: number; height: number } {
-  let maxX = 0;
-  let maxY = 0;
-  for (const n of ir.nodes) {
-    maxX = Math.max(maxX, (n.x ?? 0) + (n.width ?? 0) / 2);
-    maxY = Math.max(maxY, (n.y ?? 0) + (n.height ?? 0) / 2);
-  }
-  for (const sg of ir.subgraphs) {
-    maxX = Math.max(maxX, (sg.x ?? 0) + (sg.width ?? 0) / 2);
-    maxY = Math.max(maxY, (sg.y ?? 0) + (sg.height ?? 0) / 2);
-  }
-  return { width: maxX + 40, height: maxY + 40 };
-}
-
-export function renderFull(ir: IR, mountEl: HTMLElement): RenderState {
-  mountEl.innerHTML = '';
-  const svg = svgEl('svg');
-  const { width, height } = computeBounds(ir);
-  svg.setAttribute('width', String(width));
-  svg.setAttribute('height', String(height));
-  svg.setAttribute('viewBox', `0 0 ${width} ${height}`);
-  svg.style.background = '#fafafa';
-  svg.appendChild(defs());
-
-  // Order: subgraphs (outermost first) → edges → nodes.
-  const sortedSubgraphs = [...ir.subgraphs].sort((a, b) => {
-    const da = a.parentId ? 1 : 0;
-    const db = b.parentId ? 1 : 0;
-    return da - db;
-  });
-  for (const sg of sortedSubgraphs) svg.appendChild(renderSubgraph(sg));
-  for (const e of ir.edges) svg.appendChild(renderEdge(e));
-  for (const n of ir.nodes) svg.appendChild(renderNode(n));
-
-  // Adjacency map for partial updates.
-  const adjacency = new Map<string, string[]>();
-  for (const e of ir.edges) {
-    const k = edgeKey(e);
-    if (!adjacency.has(e.from)) adjacency.set(e.from, []);
-    if (!adjacency.has(e.to)) adjacency.set(e.to, []);
-    adjacency.get(e.from)!.push(k);
-    adjacency.get(e.to)!.push(k);
-  }
-
-  // Subgraph children map and per-node ancestor chain (innermost → outermost).
-  const subgraphChildren = new Map<string, { nodeIds: string[]; subgraphIds: string[] }>();
-  for (const sg of ir.subgraphs) {
-    subgraphChildren.set(sg.id, { nodeIds: [...sg.childNodeIds], subgraphIds: [...sg.childSubgraphIds] });
-  }
-  const nodeAncestors = new Map<string, string[]>();
-  const sgById = new Map(ir.subgraphs.map((s) => [s.id, s]));
-  for (const n of ir.nodes) {
-    const chain: string[] = [];
-    let pid = n.parentId;
-    while (pid) {
-      chain.push(pid);
-      pid = sgById.get(pid)?.parentId;
+// Build the curveBasis path string. When there's an arrow, pull the last
+// anchored point back by ARROW_TIP_LEN so the curve body stops just before the
+// node border and the arrowhead covers the gap. Mirrors EdgePath.tsx in
+// md-diagrams-testing.
+function edgeCurvePath(pts: { x: number; y: number }[]): string {
+  if (pts.length < 2) return '';
+  const anchored = anchoredPts(pts);
+  let body = anchored;
+  if (anchored.length >= 2) {
+    const last = anchored[anchored.length - 1];
+    const prev = anchored[anchored.length - 2];
+    const dx = last.x - prev.x;
+    const dy = last.y - prev.y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len > ARROW_TIP_LEN) {
+      const ratio = (len - ARROW_TIP_LEN) / len;
+      const shortened = { x: prev.x + dx * ratio, y: prev.y + dy * ratio };
+      body = [...anchored.slice(0, -1), shortened];
     }
-    nodeAncestors.set(n.id, chain);
+  }
+  return curveGen(body) ?? '';
+}
+
+// Drag-time edge geometry: 3-point waypoint set
+// (sourceBorder → midpoint → targetBorder), shape-aware on both ends.
+// Identical strategy to md-diagrams-testing's `displayLayout` override.
+function dragWaypoints(fromNode: IRNode, toNode: IRNode): { x: number; y: number }[] {
+  const fc = { x: fromNode.x ?? 0, y: fromNode.y ?? 0 };
+  const tc = { x: toNode.x   ?? 0, y: toNode.y   ?? 0 };
+  const start = clipToBorder(fromNode, tc);
+  const end   = clipToBorder(toNode,   fc);
+  const mid   = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
+  return [start, mid, end];
+}
+
+// Update the straight `<line>` that carries the arrow marker so the tip lands
+// exactly on the node border at the last waypoint.
+function updateArrowLine(
+  lineEl: SVGLineElement,
+  pts: { x: number; y: number }[]
+): void {
+  const last = pts[pts.length - 1];
+  const secondLast = pts[pts.length - 2];
+  const adx = last.x - secondLast.x;
+  const ady = last.y - secondLast.y;
+  const alen = Math.sqrt(adx * adx + ady * ady);
+  const shaftStart = alen > ARROW_TIP_LEN
+    ? { x: last.x - (adx / alen) * ARROW_TIP_LEN, y: last.y - (ady / alen) * ARROW_TIP_LEN }
+    : secondLast;
+  lineEl.setAttribute('x1', String(shaftStart.x));
+  lineEl.setAttribute('y1', String(shaftStart.y));
+  lineEl.setAttribute('x2', String(last.x));
+  lineEl.setAttribute('y2', String(last.y));
+}
+
+export function renderFull(ir: IR, mountEl: SVGElement, interactive = false): void {
+  mountEl.innerHTML = '';
+
+  // overflow visible: nodes/edges dragged outside the initial viewBox stay visible
+  mountEl.setAttribute('overflow', 'visible');
+  mountEl.style.overflow = 'visible';
+
+  // Arrow marker in <defs>
+  const defs = el('defs');
+  const marker = el('marker');
+  marker.setAttribute('id', ARROW_MARKER_ID);
+  marker.setAttribute('viewBox', '0 0 10 10');
+  marker.setAttribute('refX', '9');
+  marker.setAttribute('refY', '5');
+  marker.setAttribute('markerWidth', '6');
+  marker.setAttribute('markerHeight', '6');
+  marker.setAttribute('orient', 'auto-start-reverse');
+  const markerPath = el('path');
+  markerPath.setAttribute('d', 'M 0 0 L 10 5 L 0 10 z');
+  markerPath.setAttribute('fill', '#555');
+  marker.appendChild(markerPath);
+  defs.appendChild(marker);
+  mountEl.appendChild(defs);
+
+  const bboxMap = computeSubgraphBboxes(ir);
+
+  // Layer 1: subgraphs (back, outer before inner)
+  const sgGroup = el('g');
+  sgGroup.setAttribute('class', 'subgraphs');
+  const subgraphRects = new Map<string, SVGRectElement>();
+  const subgraphLabels = new Map<string, SVGTextElement>();
+  for (const sg of sortSubgraphsOuterFirst(ir.subgraphs)) {
+    const bbox = bboxMap.get(sg.id);
+    if (!bbox) continue;
+    const g = el('g') as SVGGElement;
+    g.setAttribute('data-subgraph-id', sg.id);
+
+    const rect = el('rect') as SVGRectElement;
+    rect.setAttribute('x', String(bbox.x));
+    rect.setAttribute('y', String(bbox.y));
+    rect.setAttribute('width', String(bbox.w));
+    rect.setAttribute('height', String(bbox.h));
+    rect.setAttribute('fill', '#f8f9fa');
+    rect.setAttribute('stroke', '#adb5bd');
+    rect.setAttribute('stroke-width', '1.5');
+    rect.setAttribute('rx', '6');
+
+    const text = el('text') as SVGTextElement;
+    text.setAttribute('x', String(bbox.x + bbox.w / 2));
+    text.setAttribute('y', String(bbox.y + 14));
+    text.setAttribute('text-anchor', 'middle');
+    text.setAttribute('font-size', '12');
+    text.setAttribute('font-weight', 'bold');
+    text.setAttribute('fill', '#495057');
+    text.textContent = sg.label;
+
+    g.appendChild(rect);
+    g.appendChild(text);
+    sgGroup.appendChild(g);
+    subgraphRects.set(sg.id, rect);
+    subgraphLabels.set(sg.id, text);
+  }
+  mountEl.appendChild(sgGroup);
+
+  // Build adjacency, edge lookup, and the live displayPoints map.
+  // displayPoints starts as a deep copy of originalPoints so the rendered
+  // geometry equals the dagre route until a drag overrides it.
+  const adjacency = new Map<string, string[]>();
+  const edgeMap = new Map<string, IREdge>();
+  const displayPoints = new Map<string, { x: number; y: number }[]>();
+
+  for (const n of ir.nodes) adjacency.set(n.id, []);
+
+  for (const e of ir.edges) {
+    const key = edgeKey(e.from, e.to);
+    edgeMap.set(key, e);
+    adjacency.get(e.from)?.push(key);
+    adjacency.get(e.to)?.push(key);
+    if (e.originalPoints && e.originalPoints.length > 0) {
+      displayPoints.set(key, e.originalPoints.map(p => ({ ...p })));
+    }
   }
 
-  mountEl.appendChild(svg);
-  return { svg, ir, adjacency, subgraphChildren, nodeAncestors };
-}
-
-// Where does the line from `from` to `to` exit `to`'s bounding rect? Returns the
-// intersection with the rect border, or `to`'s center if `from` is inside the rect.
-function rectAnchor(
-  from: { x: number; y: number },
-  to: { x: number; y: number; width: number; height: number },
-): { x: number; y: number } {
-  const dx = from.x - to.x;
-  const dy = from.y - to.y;
-  if (dx === 0 && dy === 0) return { x: to.x, y: to.y };
-  const hw = to.width / 2;
-  const hh = to.height / 2;
-  // scale = how far along (from→to_center) we hit the box border.
-  // Pick the smaller of the two axis-clipped scales.
-  const sx = Math.abs(dx) > 0 ? hw / Math.abs(dx) : Infinity;
-  const sy = Math.abs(dy) > 0 ? hh / Math.abs(dy) : Infinity;
-  const s = Math.min(sx, sy);
-  return { x: to.x + dx * s, y: to.y + dy * s };
-}
-
-// Build a clean two-point path for an edge during drag: anchor at each node's
-// rectangle border, drop dagre's stale interior waypoints. curveBasis over two
-// points degenerates to a straight line — fine, looks natural.
-// Returns both the path `d` string and the midpoint, so the label can follow.
-function liveDragPath(
-  e: IREdge,
-  fromNode: IRNode,
-  toNode: IRNode,
-): { d: string; mid: { x: number; y: number } } {
-  const fromCenter = { x: fromNode.x ?? 0, y: fromNode.y ?? 0 };
-  const toCenter = { x: toNode.x ?? 0, y: toNode.y ?? 0 };
-  const fromAnchor = rectAnchor(toCenter, {
-    x: fromCenter.x,
-    y: fromCenter.y,
-    width: fromNode.width ?? 80,
-    height: fromNode.height ?? 40,
-  });
-  const toAnchor = rectAnchor(fromCenter, {
-    x: toCenter.x,
-    y: toCenter.y,
-    width: toNode.width ?? 80,
-    height: toNode.height ?? 40,
-  });
-  return {
-    d: lineGen([fromAnchor, toAnchor]) ?? '',
-    mid: { x: (fromAnchor.x + toAnchor.x) / 2, y: (fromAnchor.y + toAnchor.y) / 2 },
+  const meta: MountMeta = {
+    ir,
+    adjacency,
+    edgeMap,
+    displayPoints,
+    subgraphRects,
+    subgraphLabels,
   };
+  (mountEl as any).__meta = meta;
+
+  // Layer 2: edges (middle)
+  const edgeGroup = el('g');
+  edgeGroup.setAttribute('class', 'edges');
+
+  for (const e of ir.edges) {
+    const key = edgeKey(e.from, e.to);
+    const pts = displayPoints.get(key);
+    if (!pts || pts.length === 0) continue;
+
+    const g = el('g') as SVGGElement;
+    g.setAttribute('data-edge-key', key);
+
+    // Curved body
+    const path = el('path');
+    path.setAttribute('class', 'edge-path');
+    path.setAttribute('d', edgeCurvePath(pts));
+    path.setAttribute('fill', 'none');
+    path.setAttribute('stroke', '#555');
+    path.setAttribute('stroke-width', '1.5');
+    if (e.style === 'dotted') {
+      path.setAttribute('stroke-dasharray', '5,5');
+    }
+    g.appendChild(path);
+
+    // Arrow tip
+    const arrowLine = el('line') as SVGLineElement;
+    arrowLine.setAttribute('class', 'edge-arrow-line');
+    arrowLine.setAttribute('stroke', '#555');
+    arrowLine.setAttribute('stroke-width', '1.5');
+    arrowLine.setAttribute('marker-end', `url(#${ARROW_MARKER_ID})`);
+    if (e.style === 'dotted') {
+      arrowLine.setAttribute('stroke-dasharray', 'none');
+    }
+    updateArrowLine(arrowLine, pts);
+    g.appendChild(arrowLine);
+
+    if (e.label) {
+      const mid = pts[Math.floor(pts.length / 2)];
+      const bg = el('rect');
+      bg.setAttribute('class', 'edge-label-bg');
+      bg.setAttribute('x', String(mid.x - 20));
+      bg.setAttribute('y', String(mid.y - 20));
+      bg.setAttribute('width', '40');
+      bg.setAttribute('height', '16');
+      bg.setAttribute('fill', 'white');
+      bg.setAttribute('opacity', '0.8');
+      const text = el('text');
+      text.setAttribute('class', 'edge-label-text');
+      text.setAttribute('x', String(mid.x));
+      text.setAttribute('y', String(mid.y - 6));
+      text.setAttribute('text-anchor', 'middle');
+      text.setAttribute('font-size', '11');
+      text.setAttribute('fill', '#333');
+      text.textContent = e.label;
+      g.appendChild(bg);
+      g.appendChild(text);
+    }
+
+    edgeGroup.appendChild(g);
+  }
+  mountEl.appendChild(edgeGroup);
+
+  // Layer 3: nodes (front)
+  const nodeGroup = el('g');
+  nodeGroup.setAttribute('class', 'nodes');
+  for (const n of ir.nodes) {
+    if (n.x == null || n.y == null || n.width == null || n.height == null) continue;
+
+    const g = el('g') as SVGGElement;
+    g.setAttribute('data-node-id', n.id);
+    g.setAttribute('transform', `translate(${n.x - n.width / 2}, ${n.y - n.height / 2})`);
+    g.style.cursor = 'grab';
+
+    const rect = el('rect');
+    rect.setAttribute('width', String(n.width));
+    rect.setAttribute('height', String(n.height));
+    rect.setAttribute('fill', 'white');
+    rect.setAttribute('stroke', '#4a6cf7');
+    rect.setAttribute('stroke-width', '1.5');
+    rect.setAttribute('rx', '4');
+
+    const text = el('text');
+    text.setAttribute('x', String(n.width / 2));
+    text.setAttribute('y', String(n.height / 2));
+    text.setAttribute('text-anchor', 'middle');
+    text.setAttribute('dominant-baseline', 'middle');
+    text.setAttribute('font-size', '13');
+    text.setAttribute('fill', '#1a1a2e');
+    text.textContent = n.label;
+
+    g.appendChild(rect);
+    g.appendChild(text);
+    nodeGroup.appendChild(g);
+  }
+  mountEl.appendChild(nodeGroup);
+
+  if (interactive) {
+    // Interactive: large fixed canvas, no viewBox scaling.
+    mountEl.removeAttribute('viewBox');
+    mountEl.setAttribute('width', '2400');
+    mountEl.setAttribute('height', '1800');
+  } else {
+    fitSVG(ir, mountEl);
+  }
 }
 
-// Padding inside a subgraph's recomputed bounds (around children + label area).
-const SUBGRAPH_PADDING = 16;
-const SUBGRAPH_LABEL_TOP = 22;
-
-// Recompute one subgraph's bounds from the current positions of its direct children
-// (both leaf nodes and child subgraphs). Mutates the IR in place AND updates the SVG.
-function recomputeSubgraphBounds(state: RenderState, sgId: string): void {
-  const sg = state.ir.subgraphs.find((s) => s.id === sgId);
-  const kids = state.subgraphChildren.get(sgId);
-  if (!sg || !kids) return;
-
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-
-  for (const childNodeId of kids.nodeIds) {
-    const n = state.ir.nodes.find((nn) => nn.id === childNodeId);
-    if (!n || n.x === undefined || n.y === undefined) continue;
-    const w = n.width ?? 80, h = n.height ?? 40;
-    minX = Math.min(minX, n.x - w / 2);
-    minY = Math.min(minY, n.y - h / 2);
-    maxX = Math.max(maxX, n.x + w / 2);
-    maxY = Math.max(maxY, n.y + h / 2);
-  }
-  for (const childSgId of kids.subgraphIds) {
-    const c = state.ir.subgraphs.find((s) => s.id === childSgId);
-    if (!c || c.x === undefined || c.y === undefined) continue;
-    const w = c.width ?? 0, h = c.height ?? 0;
-    minX = Math.min(minX, c.x - w / 2);
-    minY = Math.min(minY, c.y - h / 2);
-    maxX = Math.max(maxX, c.x + w / 2);
-    maxY = Math.max(maxY, c.y + h / 2);
-  }
-
-  if (!isFinite(minX)) return; // no children with positions
-
-  const x = minX - SUBGRAPH_PADDING;
-  const y = minY - SUBGRAPH_PADDING - SUBGRAPH_LABEL_TOP;
-  const width = (maxX - minX) + SUBGRAPH_PADDING * 2;
-  const height = (maxY - minY) + SUBGRAPH_PADDING * 2 + SUBGRAPH_LABEL_TOP;
-  sg.x = x + width / 2;
-  sg.y = y + height / 2;
-  sg.width = width;
-  sg.height = height;
-
-  // Update the SVG: rect attributes + label position.
-  const g = state.svg.querySelector(`[data-subgraph-id="${sgId}"]`) as SVGGElement | null;
-  if (!g) return;
-  const rect = g.querySelector('rect');
-  if (rect) {
-    rect.setAttribute('x', String(x));
-    rect.setAttribute('y', String(y));
-    rect.setAttribute('width', String(width));
-    rect.setAttribute('height', String(height));
-  }
-  const text = g.querySelector('text');
-  if (text) {
-    text.setAttribute('x', String(x + 8));
-    text.setAttribute('y', String(y + 16));
-  }
-}
-
-// Live drag tick: move the node, redraw connected edges as straight rect-anchored
-// segments (no stale waypoints), and grow ancestor subgraphs to contain the node.
+// Live drag update. Mutates only the visible SVG and `displayPoints` — the
+// dagre route stored on `IREdge.originalPoints` is preserved so a re-layout
+// (or simply releasing the drag) can restore the multi-waypoint shape.
 export function updateNodePosition(
-  state: RenderState,
   nodeId: string,
   newX: number,
   newY: number,
+  mountEl: SVGElement,
+  ir: IR
 ): void {
-  const node = state.ir.nodes.find((n) => n.id === nodeId);
-  if (!node) return;
+  const node = ir.nodes.find(n => n.id === nodeId);
+  if (!node || node.width == null || node.height == null) return;
+
+  // Move the node logically and visually
   node.x = newX;
   node.y = newY;
+  const nodeEl = mountEl.querySelector(`[data-node-id="${nodeId}"]`);
+  if (nodeEl) {
+    nodeEl.setAttribute('transform', `translate(${newX - node.width / 2}, ${newY - node.height / 2})`);
+  }
 
-  const g = state.svg.querySelector(`[data-node-id="${nodeId}"]`) as SVGGElement | null;
-  if (g) g.setAttribute('transform', `translate(${newX}, ${newY})`);
+  const meta: MountMeta = (mountEl as any).__meta;
+  if (!meta) return;
 
-  // Walk up the parent chain bottom-up, recomputing each ancestor's bounds from its
-  // direct children. Inner subgraphs settle first so outer subgraphs see their
-  // updated sizes.
-  const ancestors = state.nodeAncestors.get(nodeId) ?? [];
-  for (const sgId of ancestors) recomputeSubgraphBounds(state, sgId);
-
-  const keys = state.adjacency.get(nodeId) ?? [];
-  for (const k of keys) {
-    const e = state.ir.edges.find((ed) => edgeKey(ed) === k);
-    if (!e) continue;
-    const fromNode = state.ir.nodes.find((n) => n.id === e.from);
-    const toNode = state.ir.nodes.find((n) => n.id === e.to);
+  // Rebuild geometry only for edges incident to the dragged node
+  const connectedKeys = meta.adjacency.get(nodeId) || [];
+  for (const key of connectedKeys) {
+    const edge = meta.edgeMap.get(key);
+    if (!edge) continue;
+    const fromNode = ir.nodes.find(n => n.id === edge.from);
+    const toNode   = ir.nodes.find(n => n.id === edge.to);
     if (!fromNode || !toNode) continue;
-    const edgeGroup = state.svg.querySelector(`[data-edge-id="${k}"]`) as SVGGElement | null;
-    if (!edgeGroup) continue;
-    const { d, mid } = liveDragPath(e, fromNode, toNode);
-    const path = edgeGroup.querySelector('path');
-    if (path) path.setAttribute('d', d);
-    const label = edgeGroup.querySelector('text');
-    if (label) {
-      label.setAttribute('x', String(mid.x));
-      label.setAttribute('y', String(mid.y - 4));
+
+    const pts = dragWaypoints(fromNode, toNode);
+    meta.displayPoints.set(key, pts);
+
+    const pathEl = mountEl.querySelector(`[data-edge-key="${key}"] .edge-path`);
+    if (pathEl) pathEl.setAttribute('d', edgeCurvePath(pts));
+
+    const arrowLineEl = mountEl.querySelector(`[data-edge-key="${key}"] .edge-arrow-line`) as SVGLineElement | null;
+    if (arrowLineEl) updateArrowLine(arrowLineEl, pts);
+
+    const mid = pts[Math.floor(pts.length / 2)];
+    const bgEl = mountEl.querySelector(`[data-edge-key="${key}"] .edge-label-bg`);
+    if (bgEl) {
+      bgEl.setAttribute('x', String(mid.x - 20));
+      bgEl.setAttribute('y', String(mid.y - 20));
+    }
+    const textEl = mountEl.querySelector(`[data-edge-key="${key}"] .edge-label-text`);
+    if (textEl) {
+      textEl.setAttribute('x', String(mid.x));
+      textEl.setAttribute('y', String(mid.y - 6));
+    }
+  }
+
+  // Subgraph rectangles must follow their children
+  updateSubgraphRects(meta);
+}
+
+// Re-render every edge from its IR `originalPoints`. Called after drag release
+// once `layout()` has produced fresh dagre waypoints — restores multi-waypoint
+// curves.
+export function refreshEdgesFromLayout(mountEl: SVGElement): void {
+  const meta: MountMeta = (mountEl as any).__meta;
+  if (!meta) return;
+
+  for (const e of meta.ir.edges) {
+    const key = edgeKey(e.from, e.to);
+    if (!e.originalPoints || e.originalPoints.length === 0) continue;
+    const pts = e.originalPoints.map(p => ({ ...p }));
+    meta.displayPoints.set(key, pts);
+
+    const pathEl = mountEl.querySelector(`[data-edge-key="${key}"] .edge-path`);
+    if (pathEl) pathEl.setAttribute('d', edgeCurvePath(pts));
+
+    const arrowLineEl = mountEl.querySelector(`[data-edge-key="${key}"] .edge-arrow-line`) as SVGLineElement | null;
+    if (arrowLineEl) updateArrowLine(arrowLineEl, pts);
+
+    const mid = pts[Math.floor(pts.length / 2)];
+    const bgEl = mountEl.querySelector(`[data-edge-key="${key}"] .edge-label-bg`);
+    if (bgEl) {
+      bgEl.setAttribute('x', String(mid.x - 20));
+      bgEl.setAttribute('y', String(mid.y - 20));
+    }
+    const textEl = mountEl.querySelector(`[data-edge-key="${key}"] .edge-label-text`);
+    if (textEl) {
+      textEl.setAttribute('x', String(mid.x));
+      textEl.setAttribute('y', String(mid.y - 6));
+    }
+  }
+
+  // Move every node element to its IR position (a node other than the dragged
+  // one may have been re-ranked by dagre on the post-drag layout pass).
+  for (const n of meta.ir.nodes) {
+    if (n.x == null || n.y == null || n.width == null || n.height == null) continue;
+    const nodeEl = mountEl.querySelector(`[data-node-id="${n.id}"]`);
+    if (nodeEl) {
+      nodeEl.setAttribute('transform', `translate(${n.x - n.width / 2}, ${n.y - n.height / 2})`);
+    }
+  }
+
+  updateSubgraphRects(meta);
+}
+
+function updateSubgraphRects(meta: MountMeta): void {
+  if (meta.ir.subgraphs.length === 0) return;
+  const bboxMap = computeSubgraphBboxes(meta.ir);
+  for (const sg of meta.ir.subgraphs) {
+    const bbox = bboxMap.get(sg.id);
+    const rect = meta.subgraphRects.get(sg.id);
+    const text = meta.subgraphLabels.get(sg.id);
+    if (!bbox || !rect) continue;
+    rect.setAttribute('x', String(bbox.x));
+    rect.setAttribute('y', String(bbox.y));
+    rect.setAttribute('width', String(bbox.w));
+    rect.setAttribute('height', String(bbox.h));
+    if (text) {
+      text.setAttribute('x', String(bbox.x + bbox.w / 2));
+      text.setAttribute('y', String(bbox.y + 14));
     }
   }
 }
 
+// --- helpers ---
+
+function computeSubgraphBboxes(ir: IR): Map<string, BBox> {
+  const map = new Map<string, BBox>();
+  const sgById = new Map(ir.subgraphs.map(sg => [sg.id, sg]));
+
+  function bboxForSg(sgId: string): BBox | null {
+    if (map.has(sgId)) return map.get(sgId)!;
+    const sg = sgById.get(sgId);
+    if (!sg) return null;
+
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+    for (const childId of sg.children) {
+      const n = ir.nodes.find(n => n.id === childId);
+      if (!n || n.x == null || n.y == null || n.width == null || n.height == null) continue;
+      minX = Math.min(minX, n.x - n.width / 2);
+      minY = Math.min(minY, n.y - n.height / 2);
+      maxX = Math.max(maxX, n.x + n.width / 2);
+      maxY = Math.max(maxY, n.y + n.height / 2);
+    }
+
+    for (const nested of ir.subgraphs.filter(s => s.parent === sgId)) {
+      const nb = bboxForSg(nested.id);
+      if (!nb) continue;
+      minX = Math.min(minX, nb.x);
+      minY = Math.min(minY, nb.y);
+      maxX = Math.max(maxX, nb.x + nb.w);
+      maxY = Math.max(maxY, nb.y + nb.h);
+    }
+
+    if (!isFinite(minX)) return null;
+
+    const bbox: BBox = {
+      x: minX - PADDING,
+      y: minY - PADDING - 10,
+      w: maxX - minX + PADDING * 2,
+      h: maxY - minY + PADDING * 2 + 10,
+    };
+    map.set(sgId, bbox);
+    return bbox;
+  }
+
+  for (const sg of ir.subgraphs) bboxForSg(sg.id);
+  return map;
+}
+
+function sortSubgraphsOuterFirst(subgraphs: IRSubgraph[]): IRSubgraph[] {
+  return [...subgraphs].sort((a, b) => {
+    if (!a.parent && b.parent) return -1;
+    if (a.parent && !b.parent) return 1;
+    return 0;
+  });
+}
+
+function fitSVG(ir: IR, mountEl: SVGElement): void {
+  const allX = ir.nodes.filter(n => n.x != null && n.width != null).flatMap(n => [n.x! - n.width! / 2, n.x! + n.width! / 2]);
+  const allY = ir.nodes.filter(n => n.y != null && n.height != null).flatMap(n => [n.y! - n.height! / 2, n.y! + n.height! / 2]);
+  if (!allX.length) return;
+
+  const pad = 40;
+  const minX = Math.min(...allX) - pad;
+  const minY = Math.min(...allY) - pad;
+  const maxX = Math.max(...allX) + pad;
+  const maxY = Math.max(...allY) + pad;
+  const w = maxX - minX;
+  const h = maxY - minY;
+
+  mountEl.setAttribute('viewBox', `${minX} ${minY} ${w} ${h}`);
+  mountEl.setAttribute('width', String(w));
+  mountEl.setAttribute('height', String(h));
+}

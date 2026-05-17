@@ -1,21 +1,29 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Custom interactive renderer</title>
+  <meta charset="UTF-8">
+  <title>Custom Renderer (Interactive)</title>
   <style>
-    body { font-family: system-ui, sans-serif; margin: 16px; background: #fafafa; }
-    h1 { font-size: 14px; color: #555; margin: 0 0 12px; }
-    .toolbar { margin-bottom: 8px; }
-    button { font-family: inherit; padding: 6px 10px; border: 1px solid #888; background: #fff; border-radius: 4px; cursor: pointer; }
-    button:hover { background: #f0f0f0; }
-    #mount { background: #fff; padding: 16px; border-radius: 6px; overflow: auto; }
+    body { margin: 0; padding: 16px; font-family: sans-serif; background: #fff; }
+    h2 { margin: 0 0 8px; font-size: 14px; color: #666; }
+    #reset {
+      margin-bottom: 12px;
+      padding: 6px 14px;
+      font-size: 13px;
+      border: 1px solid #4a6cf7;
+      border-radius: 4px;
+      background: white;
+      color: #4a6cf7;
+      cursor: pointer;
+    }
+    #reset:hover { background: #4a6cf7; color: white; }
+    #mount { display: block; overflow: visible; }
   </style>
 </head>
 <body>
-  <h1>Custom pipeline (interactive) — drag any node, edges update live</h1>
-  <div class="toolbar"><button id="reset">Reset Layout</button></div>
-  <div id="mount"></div>
-  <script type="module" src="/src/interactive-entry.ts"></script>
+  <h2>Custom Pipeline (interactive — drag nodes)</h2>
+  <button id="reset">Reset Layout</button>
+  <svg id="mount" xmlns="http://www.w3.org/2000/svg"></svg>
+  <script type="module" src="./src/main-interactive.ts"></script>
 </body>
 </html>

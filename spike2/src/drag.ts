@@ -1,104 +1,105 @@
-import { updateNodePosition, applyRoutedEdges, edgeKey, type RenderState } from './renderer';
-import { routeEdge, type Obstacle } from './astar';
+import {
+  updateNodePosition,
+  refreshEdgesFromLayout,
+} from './renderer.js';
+import { routeEdge, DEFAULT_CONFIG } from './routing.js';
+import { renderGridOverlay, isGridOverlayShown } from './gridOverlay.js';
+import { astarSettings } from './astarSettings.js';
+import type { IR } from './types.js';
 
-export interface DragOptions {
-  onChange?: () => void;
-}
+export function attachDrag(svg: SVGSVGElement, ir: IR, mountEl: SVGElement): () => void {
+  let dragging: { id: string; offsetX: number; offsetY: number; moved: boolean } | null = null;
+  const ac = new AbortController();
+  const opts: AddEventListenerOptions = { signal: ac.signal };
 
-export function attachDrag(state: RenderState, opts: DragOptions = {}): () => void {
-  let dragId: string | null = null;
-  let offsetX = 0;
-  let offsetY = 0;
-
-  const svgPoint = (clientX: number, clientY: number) => {
-    const p = state.svg.createSVGPoint();
-    p.x = clientX;
-    p.y = clientY;
-    const ctm = state.svg.getScreenCTM();
-    if (!ctm) return { x: clientX, y: clientY };
-    const t = p.matrixTransform(ctm.inverse());
-    return { x: t.x, y: t.y };
-  };
-
-  const onDown = (ev: MouseEvent) => {
-    const target = (ev.target as Element).closest('[data-node-id]') as SVGGElement | null;
+  svg.addEventListener('mousedown', (e: MouseEvent) => {
+    const target = (e.target as Element).closest('[data-node-id]');
     if (!target) return;
-    dragId = target.dataset.nodeId!;
-    const node = state.ir.nodes.find((n) => n.id === dragId);
+    const id = target.getAttribute('data-node-id')!;
+    const node = ir.nodes.find(n => n.id === id);
     if (!node) return;
-    const pt = svgPoint(ev.clientX, ev.clientY);
-    offsetX = pt.x - (node.x ?? 0);
-    offsetY = pt.y - (node.y ?? 0);
-    target.style.cursor = 'grabbing';
-    ev.preventDefault();
-  };
+    const pt = toSVGPoint(svg, e);
+    dragging = { id, offsetX: pt.x - (node.x ?? 0), offsetY: pt.y - (node.y ?? 0), moved: false };
+    (target as SVGElement).style.cursor = 'grabbing';
+    e.preventDefault();
+  }, opts);
 
-  const onMove = (ev: MouseEvent) => {
-    if (!dragId) return;
-    const pt = svgPoint(ev.clientX, ev.clientY);
-    updateNodePosition(state, dragId, pt.x - offsetX, pt.y - offsetY);
-    opts.onChange?.();
-  };
+  window.addEventListener('mousemove', (e: MouseEvent) => {
+    if (!dragging) return;
+    dragging.moved = true;
+    const pt = toSVGPoint(svg, e);
+    updateNodePosition(
+      dragging.id,
+      pt.x - dragging.offsetX,
+      pt.y - dragging.offsetY,
+      mountEl,
+      ir
+    );
+    // Keep the grid overlay in sync with the dragged node's live position so
+    // you can see blocked cells move as you drag.
+    if (isGridOverlayShown(mountEl)) renderGridOverlay(mountEl, ir);
+  }, opts);
 
-  const onUp = () => {
-    if (!dragId) return;
-    const droppedId = dragId;
-    const node = state.ir.nodes.find((n) => n.id === droppedId);
+  window.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    const droppedId = dragging.id;
+    const moved = dragging.moved;
+    const node = ir.nodes.find(n => n.id === droppedId);
     if (node) node.pinned = true;
-    const target = state.svg.querySelector(`[data-node-id="${droppedId}"]`) as SVGGElement | null;
-    if (target) target.style.cursor = 'grab';
+    const nodeEl = mountEl.querySelector(`[data-node-id="${droppedId}"]`) as SVGElement | null;
+    if (nodeEl) nodeEl.style.cursor = 'grab';
+    dragging = null;
 
-    // A*-route every edge connected to the dropped node.
-    const edgeKeys = state.adjacency.get(droppedId) ?? [];
-    if (edgeKeys.length > 0) {
-      const bounds = {
-        width: Number(state.svg.getAttribute('width') ?? 800),
-        height: Number(state.svg.getAttribute('height') ?? 600),
-      };
-      const allObstacles: Obstacle[] = state.ir.nodes
-        .filter((n) => n.x !== undefined && n.y !== undefined)
-        .map((n) => ({ x: n.x!, y: n.y!, width: n.width ?? 80, height: n.height ?? 40 }));
-      const nodeById = new Map(state.ir.nodes.map((n) => [n.id, n]));
-
-      for (const k of edgeKeys) {
-        const e = state.ir.edges.find((ed) => edgeKey(ed) === k);
-        if (!e) continue;
-        const fromNode = nodeById.get(e.from);
-        const toNode = nodeById.get(e.to);
-        if (!fromNode || !toNode || fromNode.x === undefined || toNode.x === undefined) continue;
-        const fromBox: Obstacle = { x: fromNode.x!, y: fromNode.y!, width: fromNode.width ?? 80, height: fromNode.height ?? 40 };
-        const toBox: Obstacle = { x: toNode.x!, y: toNode.y!, width: toNode.width ?? 80, height: toNode.height ?? 40 };
-        // Build obstacle list excluding the two endpoints.
-        const obstacles = allObstacles.filter((o) => o !== fromBox && o !== toBox);
-        // Re-include the box objects themselves via identity in the routeEdge filter:
-        // routeEdge already filters fromBox/toBox by identity, so pass them as-is.
-        const result = routeEdge({
-          from: { x: fromNode.x!, y: fromNode.y! },
-          to: { x: toNode.x!, y: toNode.y! },
-          fromBox, toBox,
-          obstacles: [...obstacles, fromBox, toBox],
-          bounds,
-        });
-        if (result.ok && result.path.length >= 2) {
-          e.routedPath = result.path;
-          e.routedAt = { fromX: fromNode.x!, fromY: fromNode.y!, toX: toNode.x!, toY: toNode.y! };
-        }
-      }
-
-      applyRoutedEdges(state, edgeKeys);
+    if (!moved) {
+      refreshEdgesFromLayout(mountEl);
+      if (isGridOverlayShown(mountEl)) renderGridOverlay(mountEl, ir);
+      return;
     }
 
-    dragId = null;
-    opts.onChange?.();
-  };
+    // Snap the dropped node so its left/top edge lands on a grid line.
+    // Sub-cell drag offsets are absorbed here so the post-drop routing sees a
+    // perfectly cell-aligned node — no quantization mismatches between drops.
+    if (node && node.width != null && node.height != null) {
+      const cell = astarSettings.cellSize;
+      const left = Math.round((node.x! - node.width / 2) / cell) * cell;
+      const top  = Math.round((node.y! - node.height / 2) / cell) * cell;
+      node.x = left + node.width / 2;
+      node.y = top  + node.height / 2;
+      const nodeElSnap = mountEl.querySelector(`[data-node-id="${droppedId}"]`);
+      if (nodeElSnap) {
+        nodeElSnap.setAttribute(
+          'transform',
+          `translate(${node.x - node.width / 2}, ${node.y - node.height / 2})`,
+        );
+      }
+    }
 
-  state.svg.addEventListener('mousedown', onDown);
-  window.addEventListener('mousemove', onMove);
-  window.addEventListener('mouseup', onUp);
+    // Plain A* re-route for every edge touching the dropped node. Result is a
+    // raw corner polyline: [startBorder, corner_1, ..., corner_n, endBorder].
+    // When no obstacle sits between the two nodes, A* returns a straight line
+    // (no corners) and the rendered edge is a single straight segment. When
+    // an obstacle is in the way, corners appear at the bend points.
+    const connectedEdges = ir.edges.filter(e => e.from === droppedId || e.to === droppedId);
+    for (const edge of connectedEdges) {
+      const fromNode = ir.nodes.find(n => n.id === edge.from);
+      const toNode   = ir.nodes.find(n => n.id === edge.to);
+      if (!fromNode || !toNode) continue;
+      edge.routedPath = routeEdge(fromNode, toNode, ir, DEFAULT_CONFIG);
+    }
 
-  return () => {
-    state.svg.removeEventListener('mousedown', onDown);
-    window.removeEventListener('mousemove', onMove);
-    window.removeEventListener('mouseup', onUp);
-  };
+    refreshEdgesFromLayout(mountEl);
+    if (isGridOverlayShown(mountEl)) renderGridOverlay(mountEl, ir);
+  }, opts);
+
+  return () => ac.abort();
+}
+
+function toSVGPoint(svg: SVGSVGElement, e: MouseEvent): { x: number; y: number } {
+  const pt = svg.createSVGPoint();
+  pt.x = e.clientX;
+  pt.y = e.clientY;
+  const ctm = svg.getScreenCTM();
+  if (!ctm) return { x: e.clientX, y: e.clientY };
+  const transformed = pt.matrixTransform(ctm.inverse());
+  return { x: transformed.x, y: transformed.y };
 }

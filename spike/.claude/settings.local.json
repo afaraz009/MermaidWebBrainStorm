@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-ChildItem -Path \"E:\\\\Projects\\\\MD Test\\\\spike\" -Recurse -File)",
+      "Bash(Select-Object -ExpandProperty FullName)",
+      "Bash(Sort-Object)",
+      "Bash(npm run *)",
+      "Bash(npx tsc *)",
+      "Bash(Select-Object FullName)",
+      "Bash(ffmpeg -version)",
+      "Bash(ffprobe *)",
+      "Bash(New-Item -ItemType Directory -Force -Path \"E:\\\\Projects\\\\MD Test\\\\spike\\\\assets\\\\frames\")",
+      "Bash(Out-Null)",
+      "Bash(ffmpeg -i \"E:\\\\Projects\\\\MD Test\\\\spike\\\\assets\\\\bug.mp4\" -vf \"fps=1\" \"E:\\\\Projects\\\\MD Test\\\\spike\\\\assets\\\\frames\\\\sec_%03d.png\" -y)",
+      "Bash(Select-Object -Last 5)",
+      "Bash(echo \"exit=$?\")",
+      "Bash(npx vite *)"
+    ]
+  }
+}

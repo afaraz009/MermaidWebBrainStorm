@@ -1,18 +1,21 @@
 import { defineConfig } from 'vite';
-import { resolve } from 'path';
 
 export default defineConfig({
+  optimizeDeps: {
+    include: ['mermaid', '@dagrejs/dagre', 'd3-shape', 'd3-path'],
+  },
   build: {
     rollupOptions: {
       input: {
-        index: resolve(__dirname, 'index.html'),
-        reference: resolve(__dirname, 'mermaid-reference.html'),
-        ours: resolve(__dirname, 'our-renderer.html'),
+        index: 'index.html',
+        ourRenderer: 'our-renderer.html',
+        reference: 'mermaid-reference.html',
       },
     },
   },
   server: {
-    port: 5174,
-    open: '/index.html',
+    fs: {
+      allow: ['.'],
+    },
   },
 });
