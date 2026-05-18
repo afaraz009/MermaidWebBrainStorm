@@ -42,6 +42,11 @@ export interface FindPathOptions {
   connectivity?: Connectivity;
   cornerCut?: boolean;
   heuristic?: HeuristicName;
+  // Optional per-cell soft penalty added to the move cost when stepping INTO
+  // that cell. Same layout as `grid.blocked` (row-major, cols*rows). Used by
+  // the sequential batch router to discourage edges from reusing cells that
+  // earlier edges already occupy, without forbidding overlap entirely.
+  extraCost?: Float32Array;
 }
 
 export interface FindPathResult {
@@ -166,6 +171,7 @@ export function findPath(
   const cornerCut = options.cornerCut ?? false;
   const heuristic = pickHeuristic(options.heuristic ?? 'octile');
   const neighbors = connectivity === 4 ? NEIGHBORS_4 : NEIGHBORS_8;
+  const extraCost = options.extraCost;
 
   const { cols, rows } = grid;
   const total = cols * rows;
@@ -221,7 +227,8 @@ export function findPath(
         if (grid.blocked[ncy * cols + cx] === 1) continue;
       }
 
-      const tentative = gCur + cost;
+      const penalty = extraCost ? extraCost[nIdx] : 0;
+      const tentative = gCur + cost + penalty;
       if (tentative < gScore[nIdx]) {
         gScore[nIdx] = tentative;
         cameFrom[nIdx] = current.idx;

@@ -1,0 +1,97 @@
+- generic [ref=e1]:
+  - heading "Spike 3 — Click anywhere on a subgraph to collapse; click the surrogate to expand. Drag still works on nodes." [level=2] [ref=e2]
+  - generic [ref=e3]:
+    - button "Reset Layout" [ref=e4] [cursor=pointer]
+    - button "Collapse All" [active] [ref=e5] [cursor=pointer]
+    - button "Expand All" [ref=e6] [cursor=pointer]
+    - button "Show A* Grid" [ref=e7] [cursor=pointer]
+    - button "Hide A* Feature" [ref=e8] [cursor=pointer]
+    - 'button "Separation: Soft" [ref=e1422] [cursor=pointer]'
+  - generic [ref=e10]:
+    - generic [ref=e11]:
+      - text: Cell size
+      - slider "Cell size 10 px" [ref=e12]: "10"
+      - generic [ref=e13]: "10"
+      - text: px
+    - generic [ref=e14]:
+      - text: Connectivity
+      - combobox "Connectivity" [ref=e15]:
+        - option "4-way" [selected]
+        - option "8-way"
+    - generic [ref=e16]:
+      - text: Corner cutting
+      - combobox "Corner cutting" [ref=e17]:
+        - option "Blocked" [selected]
+        - option "Allowed"
+    - generic [ref=e18]:
+      - text: Heuristic
+      - combobox "Heuristic" [ref=e19]:
+        - option "Manhattan" [selected]
+        - option "Octile"
+        - option "Euclidean"
+        - option "Chebyshev"
+        - option "Zero (Dijkstra)"
+    - generic [ref=e20]:
+      - generic [ref=e21]: obstacle
+      - generic [ref=e23]: closed
+      - generic [ref=e25]: open
+  - img [ref=e27]:
+    - generic [ref=e3062]:
+      - generic [ref=e3065] [cursor=pointer]: Orders ▾
+      - generic [ref=e3068] [cursor=pointer]: Cart ▾
+      - generic [ref=e3071] [cursor=pointer]: Checkout ▾
+    - generic [ref=e3072]:
+      - generic [ref=e3182]: sync
+      - generic [ref=e3186]: sync
+      - generic [ref=e3190]: sync
+    - generic [ref=e3191]:
+      - generic [ref=e3194]: Client App
+      - generic [ref=e3197]: Edge Gateway
+      - generic [ref=e3200]: Cart 1
+      - generic [ref=e3203]: Cart 2
+      - generic [ref=e3206]: Cart 3
+      - generic [ref=e3209]: Cart 4
+      - generic [ref=e3212]: Cart 5
+      - generic [ref=e3215]: Cart 6
+      - generic [ref=e3218]: Cart 7
+      - generic [ref=e3221]: Cart 8
+      - generic [ref=e3224]: Cart 9
+      - generic [ref=e3227]: Cart 10
+      - generic [ref=e3230]: Cart 11
+      - generic [ref=e3233]: Cart 12
+      - generic [ref=e3236]: Checkout 1
+      - generic [ref=e3239]: Checkout 2
+      - generic [ref=e3242]: Checkout 3
+      - generic [ref=e3245]: Checkout 4
+      - generic [ref=e3248]: Checkout 5
+      - generic [ref=e3251]: Checkout 6
+      - generic [ref=e3254]: Checkout 7
+      - generic [ref=e3257]: Checkout 8
+      - generic [ref=e3260]: Checkout 9
+      - generic [ref=e3263]: Checkout 10
+      - generic [ref=e3266]: Checkout 11
+      - generic [ref=e3269]: Checkout 12
+      - generic [ref=e3270]:
+        - generic [ref=e3273]: Web
+        - generic [ref=e3274]: (23)
+      - generic [ref=e3275]:
+        - generic [ref=e3278]: Mobile
+        - generic [ref=e3279]: (24)
+      - generic [ref=e3280]:
+        - generic [ref=e3283]: Billing
+        - generic [ref=e3284]: (12)
+      - generic [ref=e3285]:
+        - generic [ref=e3288]: Fraud
+        - generic [ref=e3289]: (11)
+      - generic [ref=e3290]:
+        - generic [ref=e3293]: Inventory
+        - generic [ref=e3294]: (24)
+      - generic [ref=e3295]:
+        - generic [ref=e3298]: Shipping
+        - generic [ref=e3299]: (24)
+      - generic [ref=e3300]:
+        - generic [ref=e3303]: Notifications
+        - generic [ref=e3304]: (23)
+      - generic [ref=e3305]:
+        - generic [ref=e3308]: Analytics
+        - generic [ref=e3309]: (24)

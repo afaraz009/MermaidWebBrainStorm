@@ -3,8 +3,8 @@ import { layout } from './layout.js';
 import { renderFull } from './renderer.js';
 import { attachDrag } from './drag.js';
 import { renderGridOverlay, clearGridOverlay, isGridOverlayShown } from './gridOverlay.js';
-import { routeEdge } from './routing.js';
-import { astarSettings, type HeuristicName, type Connectivity } from './astarSettings.js';
+import { routeEdge, routeEdgesBatch } from './routing.js';
+import { astarSettings, type HeuristicName, type Connectivity, type EdgeSeparation } from './astarSettings.js';
 import { deriveEffectiveIR, isSurrogateId } from './effective-ir.js';
 import { attachCollapseHandlers } from './collapse.js';
 import type { IR } from './types.js';
@@ -26,6 +26,28 @@ function readFixtureName(): string {
 function reattach(): void {
   if (detachDrag) detachDrag();
   detachDrag = attachDrag(svg, currentEff, svg);
+}
+
+// Route every edge in `currentEff` with the active separation mode, then
+// mirror the resulting `routedPath` onto matching source-IR edges so collapse
+// / reset see the same state. Centralizes the batch-route flow shared by
+// `rerenderWithCollapse` and the toggle-on click handler.
+function routeAllEffWithCurrentSeparation(): void {
+  routeEdgesBatch(
+    currentEff.edges,
+    currentEff,
+    {
+      cellSize: astarSettings.cellSize,
+      padding: astarSettings.padding,
+      marginCells: astarSettings.marginCells,
+    },
+    astarSettings.separation,
+  );
+  for (const edge of currentEff.edges) {
+    if (!edge.routedPath) continue;
+    const src = ir.edges.find(e => e.from === edge.from && e.to === edge.to);
+    if (src) src.routedPath = edge.routedPath;
+  }
 }
 
 // Write positions/sizes computed for the effective IR back onto the source IR,
@@ -53,13 +75,19 @@ function syncEffToSource(): void {
 }
 
 // Full collapse/expand-aware re-render. Stale A* routedPath values are cleared
-// because the layout shift invalidates them; the user can re-route by dragging.
+// because the collapse/expand invalidates them. If the A* toggle is currently
+// on, re-route every edge with A* against the new layout so the result matches
+// the active toggle state — without this, expand/collapse would always show
+// dagre output regardless of the toggle.
 function rerenderWithCollapse(): void {
   const overlayWasShown = isGridOverlayShown(svg);
   ir.edges.forEach(e => { delete e.routedPath; });
   currentEff = deriveEffectiveIR(ir);
   layout(currentEff);
   syncEffToSource();
+  if (astarSettings.enabled) {
+    routeAllEffWithCurrentSeparation();
+  }
   renderFull(currentEff, svg, true, ir);
   reattach();
   if (overlayWasShown) renderGridOverlay(svg, currentEff);
@@ -117,9 +145,68 @@ if (gridBtn) {
   });
 }
 
+// Toggle A* edge routing. The two directions are symmetric:
+//   off → re-run dagre, drop all cached A* paths, render the curved default.
+//   on  → A*-route every edge immediately against the current node positions,
+//         render the straight A* polylines. No node drag required.
+const astarBtn = document.getElementById('toggleAstar');
+if (astarBtn) {
+  astarBtn.addEventListener('click', () => {
+    astarSettings.enabled = !astarSettings.enabled;
+    const overlayWasShown = isGridOverlayShown(svg);
+    if (astarSettings.enabled) {
+      astarBtn.textContent = 'Hide A* Feature';
+      astarBtn.classList.add('on');
+      // Route every edge now so the switch is instant. Honor the current
+      // separation mode (off / soft / hard).
+      routeAllEffWithCurrentSeparation();
+    } else {
+      astarBtn.textContent = 'Show A* Feature';
+      astarBtn.classList.remove('on');
+      for (const edge of currentEff.edges) delete edge.routedPath;
+      for (const edge of ir.edges)         delete edge.routedPath;
+      // Re-run dagre so edges get fresh `originalPoints` matching the current
+      // (possibly dragged) node positions; otherwise pinned-but-moved nodes
+      // would render with stale points and edges would appear disconnected.
+      layout(currentEff);
+    }
+    renderFull(currentEff, svg, true, ir);
+    reattach();
+    if (overlayWasShown) renderGridOverlay(svg, currentEff);
+  });
+}
+
+// Cycle the edge-separation mode: off → soft → hard → off. When A* is on,
+// re-route the whole graph immediately under the new mode so the change is
+// visible without requiring a drag.
+const sepBtn = document.getElementById('toggleSeparation');
+function labelForSeparation(mode: EdgeSeparation): string {
+  return mode === 'off'  ? 'Separation: Off'
+       : mode === 'soft' ? 'Separation: Soft'
+                         : 'Separation: Hard';
+}
+if (sepBtn) {
+  sepBtn.textContent = labelForSeparation(astarSettings.separation);
+  sepBtn.addEventListener('click', () => {
+    astarSettings.separation =
+      astarSettings.separation === 'off'  ? 'soft'
+    : astarSettings.separation === 'soft' ? 'hard'
+                                          : 'off';
+    sepBtn.textContent = labelForSeparation(astarSettings.separation);
+    sepBtn.classList.toggle('on', astarSettings.separation !== 'off');
+    if (!astarSettings.enabled) return;
+    const overlayWasShown = isGridOverlayShown(svg);
+    routeAllEffWithCurrentSeparation();
+    renderFull(currentEff, svg, true, ir);
+    reattach();
+    if (overlayWasShown) renderGridOverlay(svg, currentEff);
+  });
+}
+
 // Re-route every edge that has been A*-routed at least once, using the
 // current settings. Then redraw all edges, preserving overlay visibility.
 function rerouteAll(): void {
+  if (!astarSettings.enabled) return;
   const overlayWasShown = isGridOverlayShown(svg);
   for (const edge of currentEff.edges) {
     if (!edge.routedPath) continue;

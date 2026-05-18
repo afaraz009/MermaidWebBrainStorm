@@ -43,6 +43,8 @@
     <button id="collapseAll" class="btn">Collapse All</button>
     <button id="expandAll" class="btn">Expand All</button>
     <button id="toggleGrid" class="btn">Show A* Grid</button>
+    <button id="toggleAstar" class="btn on">Hide A* Feature</button>
+    <button id="toggleSeparation" class="btn">Separation: Off</button>
   </div>
   <div class="panel" id="astarPanel">
     <label>Cell size
@@ -51,8 +53,8 @@
     </label>
     <label>Connectivity
       <select id="cfgConnectivity">
-        <option value="4">4-way</option>
-        <option value="8" selected>8-way</option>
+        <option value="4" selected>4-way</option>
+        <option value="8">8-way</option>
       </select>
     </label>
     <label>Corner cutting
@@ -63,8 +65,8 @@
     </label>
     <label>Heuristic
       <select id="cfgHeuristic">
-        <option value="manhattan">Manhattan</option>
-        <option value="octile" selected>Octile</option>
+        <option value="manhattan" selected>Manhattan</option>
+        <option value="octile">Octile</option>
         <option value="euclidean">Euclidean</option>
         <option value="chebyshev">Chebyshev</option>
         <option value="zero">Zero (Dijkstra)</option>

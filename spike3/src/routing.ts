@@ -8,7 +8,7 @@ import {
   nearestFreeCell,
   isBlocked,
 } from './astar.js';
-import { astarSettings, lastTrace } from './astarSettings.js';
+import { astarSettings, lastTrace, type EdgeSeparation } from './astarSettings.js';
 
 export interface RoutingConfig {
   cellSize: number;
@@ -115,13 +115,109 @@ function paddedBboxCells(grid: AStarGrid, nodes: IRNode[], config: RoutingConfig
   return mask;
 }
 
+type Face = 'top' | 'bottom' | 'left' | 'right';
+
+// Which face on `thisNode` faces `otherCenter`? Uses the same aspect-ratio-aware
+// comparison as the dock placement so face selection is consistent between
+// face-slot assignment and dock cell computation.
+function pickFace(thisNode: IRNode, otherCenter: { x: number; y: number }): Face {
+  const nx = thisNode.x ?? 0;
+  const ny = thisNode.y ?? 0;
+  const halfW = (thisNode.width  ?? 0) / 2;
+  const halfH = (thisNode.height ?? 0) / 2;
+  const dx = otherCenter.x - nx;
+  const dy = otherCenter.y - ny;
+  const horizFraction = halfW > 0 ? Math.abs(dx) / halfW : 0;
+  const vertFraction  = halfH > 0 ? Math.abs(dy) / halfH : 0;
+  if (horizFraction >= vertFraction) {
+    return dx >= 0 ? 'right' : 'left';
+  }
+  return dy >= 0 ? 'bottom' : 'top';
+}
+
+// Find every edge that touches `thisNode` and uses the same face as the edge
+// in question. Return the slot offset (in cells, along the face tangent) for
+// the current edge, ordered by angle to the neighbor's center so edges fan out
+// in the same order they leave the node — mirrors the reference image where
+// the gateway has many edges distributed along its bottom face.
+//
+// Slots are symmetric around the face center: an odd count is …, -1, 0, +1, …
+// and an even count is …, -1.5, -0.5, +0.5, +1.5, …. Clamped to the available
+// cells on the face so a small node with many edges doesn't push slots outside
+// its own width/height.
+function faceSlotOffset(
+  thisNode: IRNode,
+  thisOtherCenter: { x: number; y: number },
+  ir: IR,
+  edgeId: string,
+  cellSize: number,
+): number {
+  const face = pickFace(thisNode, thisOtherCenter);
+
+  interface Sibling { id: string; angle: number }
+  const siblings: Sibling[] = [];
+  for (const e of ir.edges) {
+    const isOutgoing = e.from === thisNode.id;
+    const isIncoming = e.to   === thisNode.id;
+    if (!isOutgoing && !isIncoming) continue;
+    const otherId = isOutgoing ? e.to : e.from;
+    const other = ir.nodes.find(n => n.id === otherId);
+    if (!other || other.x == null || other.y == null) continue;
+    const oc = { x: other.x, y: other.y };
+    if (pickFace(thisNode, oc) !== face) continue;
+    const dx = oc.x - (thisNode.x ?? 0);
+    const dy = oc.y - (thisNode.y ?? 0);
+    siblings.push({ id: `${e.from}::${e.to}`, angle: Math.atan2(dy, dx) });
+  }
+
+  if (siblings.length <= 1) return 0;
+
+  // Order along the face tangent. For top/bottom faces, ascending angle is not
+  // monotonic in x; sort by x-component of the neighbor offset directly. For
+  // left/right faces, sort by y-component.
+  siblings.sort((a, b) => a.angle - b.angle);
+  // Map angle order to tangent order: for top face, leftmost angle should be
+  // leftmost slot (negative). We re-sort by the actual tangent coordinate.
+  const tangentValue = (s: Sibling): number => {
+    // Recover dx, dy from angle (unit vector is fine — we only need ordering).
+    const dx = Math.cos(s.angle);
+    const dy = Math.sin(s.angle);
+    switch (face) {
+      case 'top':    return dx;          // left → negative x
+      case 'bottom': return dx;
+      case 'left':   return dy;          // up → negative y
+      case 'right':  return dy;
+    }
+  };
+  siblings.sort((a, b) => tangentValue(a) - tangentValue(b));
+
+  const idx = siblings.findIndex(s => s.id === edgeId);
+  if (idx < 0) return 0;
+
+  const n = siblings.length;
+  // Symmetric, integer-spaced slot offsets.
+  let slot = idx - (n - 1) / 2;
+
+  // Clamp so slots stay within the node's face. Leave one cell of margin on
+  // each end so the dock doesn't fall off the corner.
+  const halfW = (thisNode.width  ?? 0) / 2;
+  const halfH = (thisNode.height ?? 0) / 2;
+  const faceLen = (face === 'top' || face === 'bottom') ? 2 * halfW : 2 * halfH;
+  const maxCellsOnFace = Math.max(1, Math.floor(faceLen / cellSize) - 1);
+  const maxAbsSlot = (maxCellsOnFace - 1) / 2;
+  if (slot >  maxAbsSlot) slot =  maxAbsSlot;
+  if (slot < -maxAbsSlot) slot = -maxAbsSlot;
+  return slot;
+}
+
 // Compute the face-centered docking cell and the face's outward normal for
 // an endpoint:
 //   1. The line from this node's center to the OTHER endpoint's center crosses
 //      exactly one face (top/bottom/left/right). We pick that face by comparing
 //      |dx|/halfW vs |dy|/halfH — aspect-ratio-aware face selection.
 //   2. The dock cell is the CENTER cell of that face, sitting one cell
-//      OUTSIDE the node.
+//      OUTSIDE the node, optionally shifted along the face tangent by
+//      `slotOffset` cells so multiple edges sharing a face don't overlap.
 //   3. The normal `(nx,ny)` is the unit step that points OUTWARD from the face.
 //
 // The caller adds a "guard" cell one normal-step further from the dock cell.
@@ -132,6 +228,7 @@ function borderDock(
   grid: AStarGrid,
   thisNode: IRNode,
   otherCenter: { x: number; y: number },
+  slotOffset: number = 0,
 ): DockInfo {
   const nx = thisNode.x ?? 0;
   const ny = thisNode.y ?? 0;
@@ -149,7 +246,8 @@ function borderDock(
   let normalDx = 0;
   let normalDy = 0;
   if (horizFraction >= vertFraction) {
-    cy = Math.floor((ny - grid.originY) / cs);
+    // left or right face — slot offset shifts along Y (vertical tangent).
+    cy = Math.floor((ny - grid.originY) / cs) + Math.round(slotOffset);
     if (dx >= 0) {
       cx = Math.floor((nx + halfW - grid.originX) / cs);
       normalDx = 1;
@@ -158,7 +256,8 @@ function borderDock(
       normalDx = -1;
     }
   } else {
-    cx = Math.floor((nx - grid.originX) / cs);
+    // top or bottom face — slot offset shifts along X (horizontal tangent).
+    cx = Math.floor((nx - grid.originX) / cs) + Math.round(slotOffset);
     if (dy >= 0) {
       cy = Math.floor((ny + halfH - grid.originY) / cs);
       normalDy = 1;
@@ -210,9 +309,16 @@ export function routeEdge(
   const exclude = new Set<string>([fromNode.id, toNode.id]);
   const grid = buildGrid(ir, exclude, config);
 
-  // Dock cells (face-center, one cell outside) plus face outward normals.
-  const startDock = borderDock(grid, fromNode, tc);
-  const goalDock  = borderDock(grid, toNode,   fc);
+  // Per-edge slot offsets so multiple edges sharing a node face fan out
+  // along the face instead of all landing on the same dock cell.
+  const edgeId = `${fromNode.id}::${toNode.id}`;
+  const startSlot = faceSlotOffset(fromNode, tc, ir, edgeId, config.cellSize);
+  const goalSlot  = faceSlotOffset(toNode,   fc, ir, edgeId, config.cellSize);
+
+  // Dock cells (face-center, one cell outside, shifted by slot offset) plus
+  // face outward normals.
+  const startDock = borderDock(grid, fromNode, tc, startSlot);
+  const goalDock  = borderDock(grid, toNode,   fc, goalSlot);
 
   // Guard cells: one normal-step further out than the docks. Routing happens
   // *between guards*. Because the only way to reach a dock from its guard is
@@ -275,4 +381,209 @@ export function routeEdge(
   const fullPath: Cell[] = [startDock.dock, ...result.path, goalDock.dock];
   const collapsed = collapseColinear(fullPath);
   return collapsed.map(c => cellToWorld(grid, c.cx, c.cy));
+}
+
+// Per-cell soft penalty added for every cell an earlier edge already occupies.
+// Larger than the max neighbor move cost (sqrt 2 ≈ 1.414) so a single shared
+// cell is always more expensive than a one-step detour around it. We don't
+// want this so large that A* takes wild detours through unrelated space, so
+// it's modest — about one "extra cell of distance" per overlap.
+const SOFT_OVERLAP_PENALTY = 4;
+
+// Tag every cell on a freshly-routed path so the next edge in the batch sees
+// it. For soft mode we accumulate into `extraCost` (cell may still be used but
+// at higher cost). For hard mode we mark `dynamicBlocked` so the cell becomes
+// a full obstacle for later edges. We also tag the orthogonal neighbors of
+// each path cell — without this, parallel edges run on adjacent rows/columns
+// and visually merge in curveBasis rendering even though they don't share
+// cells.
+function markPathCells(
+  pathCells: Cell[],
+  cols: number,
+  rows: number,
+  extraCost: Float32Array | null,
+  dynamicBlocked: Uint8Array | null,
+): void {
+  const stamp = (cx: number, cy: number, weight: number): void => {
+    if (cx < 0 || cy < 0 || cx >= cols || cy >= rows) return;
+    const idx = cy * cols + cx;
+    if (extraCost) extraCost[idx] += SOFT_OVERLAP_PENALTY * weight;
+    if (dynamicBlocked) dynamicBlocked[idx] = 1;
+  };
+  for (const c of pathCells) {
+    stamp(c.cx, c.cy, 1.0);
+    // Neighborhood penalty — softer than the center cell so the path is still
+    // free to ride alongside, just with a cost preference for greater spacing.
+    stamp(c.cx + 1, c.cy, 0.5);
+    stamp(c.cx - 1, c.cy, 0.5);
+    stamp(c.cx, c.cy + 1, 0.5);
+    stamp(c.cx, c.cy - 1, 0.5);
+  }
+}
+
+// Sequential batch router. Routes every edge against a SHARED grid + cost
+// buffer so each new edge can "see" the cells used by earlier edges. With
+// `separation = 'off'` the buffer stays empty and the result matches calling
+// `routeEdge` independently per edge. Mutates each `IREdge.routedPath` in
+// place; ignores edges whose endpoints are missing.
+//
+// Edge ordering: longest manhattan distance first. Long edges are the most
+// constrained (they cross more obstacles) so giving them first pick of cells
+// keeps short edges flexible to detour around the long ones.
+export function routeEdgesBatch(
+  edges: IREdge[],
+  ir: IR,
+  config: RoutingConfig,
+  separation: EdgeSeparation,
+): void {
+  if (separation === 'off') {
+    for (const edge of edges) {
+      const fromNode = ir.nodes.find(n => n.id === edge.from);
+      const toNode   = ir.nodes.find(n => n.id === edge.to);
+      if (!fromNode || !toNode) continue;
+      edge.routedPath = routeEdge(fromNode, toNode, ir, config);
+    }
+    return;
+  }
+
+  // Order: longest first so the most constrained edges claim cells before the
+  // short, flexible ones.
+  const ordered = [...edges]
+    .map(e => {
+      const f = ir.nodes.find(n => n.id === e.from);
+      const t = ir.nodes.find(n => n.id === e.to);
+      const dx = (f?.x ?? 0) - (t?.x ?? 0);
+      const dy = (f?.y ?? 0) - (t?.y ?? 0);
+      return { e, dist: Math.abs(dx) + Math.abs(dy) };
+    })
+    .sort((a, b) => b.dist - a.dist)
+    .map(x => x.e);
+
+  // Build a grid once that EXCLUDES no nodes (so all node interiors are
+  // blocked). We swap exclusions in/out per edge by remembering and clearing
+  // their bbox cells. This keeps the grid dimensions / origin constant across
+  // the batch, so a single shared `extraCost` / `dynamicBlocked` buffer is
+  // safe to reuse.
+  const baseGrid = buildGrid(ir, new Set<string>(), config);
+  const total = baseGrid.cols * baseGrid.rows;
+  const extraCost: Float32Array | null = separation === 'soft' ? new Float32Array(total) : null;
+  // `dynamicBlocked` is overlaid on top of baseGrid.blocked for hard mode.
+  // We can't mutate baseGrid.blocked because the per-edge exclusion needs to
+  // see the original blocked mask, not blocked + previous edges.
+  const dynamicBlocked: Uint8Array | null = separation === 'hard' ? new Uint8Array(total) : null;
+
+  for (const edge of ordered) {
+    const fromNode = ir.nodes.find(n => n.id === edge.from);
+    const toNode   = ir.nodes.find(n => n.id === edge.to);
+    if (!fromNode || !toNode) continue;
+    edge.routedPath = routeEdgeOnSharedGrid(
+      fromNode, toNode, ir, config, baseGrid, extraCost, dynamicBlocked,
+    );
+  }
+}
+
+// Like `routeEdge` but uses a caller-supplied shared grid + cost buffers. The
+// caller is responsible for grid/buffer lifetime; this function only mutates
+// `baseGrid.blocked` *transiently* (un-blocks the two endpoint nodes' cells
+// for the duration of the search, then restores them).
+function routeEdgeOnSharedGrid(
+  fromNode: IRNode,
+  toNode: IRNode,
+  ir: IR,
+  config: RoutingConfig,
+  baseGrid: AStarGrid,
+  extraCost: Float32Array | null,
+  dynamicBlocked: Uint8Array | null,
+): { x: number; y: number }[] {
+  const fc = { x: fromNode.x ?? 0, y: fromNode.y ?? 0 };
+  const tc = { x: toNode.x   ?? 0, y: toNode.y   ?? 0 };
+
+  // Un-block the two endpoint nodes' padded bbox cells so their dock cells
+  // aren't obstacles. Remember which cells we touched so we can restore.
+  const restore: number[] = [];
+  for (const n of [fromNode, toNode]) {
+    if (n.x == null || n.y == null || n.width == null || n.height == null) continue;
+    const left   = n.x - n.width / 2 - config.padding;
+    const right  = n.x + n.width / 2 + config.padding;
+    const top    = n.y - n.height / 2 - config.padding;
+    const bottom = n.y + n.height / 2 + config.padding;
+    const c0 = Math.max(0, Math.floor((left   - baseGrid.originX) / baseGrid.cellSize));
+    const c1 = Math.min(baseGrid.cols - 1, Math.floor((right  - baseGrid.originX) / baseGrid.cellSize));
+    const r0 = Math.max(0, Math.floor((top    - baseGrid.originY) / baseGrid.cellSize));
+    const r1 = Math.min(baseGrid.rows - 1, Math.floor((bottom - baseGrid.originY) / baseGrid.cellSize));
+    for (let r = r0; r <= r1; r++) {
+      for (let c = c0; c <= c1; c++) {
+        const i = r * baseGrid.cols + c;
+        if (baseGrid.blocked[i] === 1) {
+          baseGrid.blocked[i] = 0;
+          restore.push(i);
+        }
+      }
+    }
+  }
+
+  try {
+    const edgeId = `${fromNode.id}::${toNode.id}`;
+    const startSlot = faceSlotOffset(fromNode, tc, ir, edgeId, config.cellSize);
+    const goalSlot  = faceSlotOffset(toNode,   fc, ir, edgeId, config.cellSize);
+
+    const startDock = borderDock(baseGrid, fromNode, tc, startSlot);
+    const goalDock  = borderDock(baseGrid, toNode,   fc, goalSlot);
+
+    const startGuard: Cell = {
+      cx: startDock.dock.cx + startDock.normalDx,
+      cy: startDock.dock.cy + startDock.normalDy,
+    };
+    const goalGuard: Cell = {
+      cx: goalDock.dock.cx + goalDock.normalDx,
+      cy: goalDock.dock.cy + goalDock.normalDy,
+    };
+    const sg = nearestFreeCell(baseGrid, startGuard);
+    const gg = nearestFreeCell(baseGrid, goalGuard);
+
+    const startCenter = cellToWorld(baseGrid, startDock.dock.cx, startDock.dock.cy);
+    const goalCenter  = cellToWorld(baseGrid, goalDock.dock.cx,  goalDock.dock.cy);
+
+    if (isBlocked(baseGrid, startDock.dock.cx, startDock.dock.cy) ||
+        isBlocked(baseGrid, goalDock.dock.cx,  goalDock.dock.cy)) {
+      return [startCenter, goalCenter];
+    }
+
+    // For hard mode we apply the dynamic block on top of the base grid by
+    // briefly OR-ing it in. Saves allocating a new grid per edge.
+    const dynRestore: number[] = [];
+    if (dynamicBlocked) {
+      for (let i = 0; i < dynamicBlocked.length; i++) {
+        if (dynamicBlocked[i] === 1 && baseGrid.blocked[i] === 0) {
+          baseGrid.blocked[i] = 1;
+          dynRestore.push(i);
+        }
+      }
+    }
+
+    let result;
+    try {
+      result = findPath(baseGrid, sg, gg, {
+        connectivity: astarSettings.connectivity,
+        cornerCut: astarSettings.cornerCut,
+        heuristic: astarSettings.heuristic,
+        extraCost: extraCost ?? undefined,
+      });
+    } finally {
+      for (const i of dynRestore) baseGrid.blocked[i] = 0;
+    }
+
+    if (!result.path) return [startCenter, goalCenter];
+
+    const fullPath: Cell[] = [startDock.dock, ...result.path, goalDock.dock];
+    // Stamp the chosen path cells onto the shared buffers BEFORE collapsing,
+    // so the cost grid reflects every cell the route actually traverses (not
+    // just the polyline corners).
+    markPathCells(fullPath, baseGrid.cols, baseGrid.rows, extraCost, dynamicBlocked);
+
+    const collapsed = collapseColinear(fullPath);
+    return collapsed.map(c => cellToWorld(baseGrid, c.cx, c.cy));
+  } finally {
+    for (const i of restore) baseGrid.blocked[i] = 1;
+  }
 }

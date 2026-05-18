@@ -1,0 +1,259 @@
+- generic [ref=e1]:
+  - heading "Spike 3 — Click anywhere on a subgraph to collapse; click the surrogate to expand. Drag still works on nodes." [level=2] [ref=e2]
+  - generic [ref=e3]:
+    - button "Reset Layout" [ref=e4] [cursor=pointer]
+    - button "Collapse All" [ref=e5] [cursor=pointer]
+    - button "Expand All" [active] [ref=e6] [cursor=pointer]
+    - button "Show A* Grid" [ref=e7] [cursor=pointer]
+    - button "Hide A* Feature" [ref=e4613] [cursor=pointer]
+    - 'button "Separation: Soft" [ref=e4062] [cursor=pointer]'
+  - generic [ref=e10]:
+    - generic [ref=e11]:
+      - text: Cell size
+      - slider "Cell size 10 px" [ref=e12]: "10"
+      - generic [ref=e13]: "10"
+      - text: px
+    - generic [ref=e14]:
+      - text: Connectivity
+      - combobox "Connectivity" [ref=e15]:
+        - option "4-way"
+        - option "8-way" [selected]
+    - generic [ref=e16]:
+      - text: Corner cutting
+      - combobox "Corner cutting" [ref=e17]:
+        - option "Blocked" [selected]
+        - option "Allowed"
+    - generic [ref=e18]:
+      - text: Heuristic
+      - combobox "Heuristic" [ref=e19]:
+        - option "Manhattan" [selected]
+        - option "Octile"
+        - option "Euclidean"
+        - option "Chebyshev"
+        - option "Zero (Dijkstra)"
+    - generic [ref=e20]:
+      - generic [ref=e21]: obstacle
+      - generic [ref=e23]: closed
+      - generic [ref=e25]: open
+  - img [ref=e27]:
+    - generic [ref=e4862]:
+      - generic [ref=e4865] [cursor=pointer]: Web ▾
+      - generic [ref=e4868] [cursor=pointer]: Mobile ▾
+      - generic [ref=e4871] [cursor=pointer]: Orders ▾
+      - generic [ref=e4874] [cursor=pointer]: Payments ▾
+      - generic [ref=e4877] [cursor=pointer]: Inventory ▾
+      - generic [ref=e4880] [cursor=pointer]: Shipping ▾
+      - generic [ref=e4883] [cursor=pointer]: Notifications ▾
+      - generic [ref=e4886] [cursor=pointer]: Analytics ▾
+      - generic [ref=e4889] [cursor=pointer]: Auth ▾
+      - generic [ref=e4892] [cursor=pointer]: Session ▾
+      - generic [ref=e4895] [cursor=pointer]: Push ▾
+      - generic [ref=e4898] [cursor=pointer]: Telemetry ▾
+      - generic [ref=e4901] [cursor=pointer]: Cart ▾
+      - generic [ref=e4904] [cursor=pointer]: Checkout ▾
+      - generic [ref=e4907] [cursor=pointer]: Billing ▾
+      - generic [ref=e4910] [cursor=pointer]: Fraud ▾
+      - generic [ref=e4913] [cursor=pointer]: Catalog ▾
+      - generic [ref=e4916] [cursor=pointer]: Stock ▾
+      - generic [ref=e4919] [cursor=pointer]: Routing ▾
+      - generic [ref=e4922] [cursor=pointer]: Tracking ▾
+      - generic [ref=e4925] [cursor=pointer]: Email ▾
+      - generic [ref=e4928] [cursor=pointer]: SMS ▾
+      - generic [ref=e4931] [cursor=pointer]: Ingest ▾
+      - generic [ref=e4934] [cursor=pointer]: Reporting ▾
+    - generic [ref=e4935]:
+      - generic [ref=e5441]: sync
+      - generic [ref=e5445]: sync
+      - generic [ref=e5449]: sync
+    - generic [ref=e5450]:
+      - generic [ref=e5453]: Client App
+      - generic [ref=e5456]: Edge Gateway
+      - generic [ref=e5459]: Auth 1
+      - generic [ref=e5462]: Auth 2
+      - generic [ref=e5465]: Auth 3
+      - generic [ref=e5468]: Auth 4
+      - generic [ref=e5471]: Auth 5
+      - generic [ref=e5474]: Auth 6
+      - generic [ref=e5477]: Auth 7
+      - generic [ref=e5480]: Auth 8
+      - generic [ref=e5483]: Auth 9
+      - generic [ref=e5486]: Auth 10
+      - generic [ref=e5489]: Auth 11
+      - generic [ref=e5492]: Auth 12
+      - generic [ref=e5495]: Session 1
+      - generic [ref=e5498]: Session 2
+      - generic [ref=e5501]: Session 3
+      - generic [ref=e5504]: Session 4
+      - generic [ref=e5507]: Session 5
+      - generic [ref=e5510]: Session 6
+      - generic [ref=e5513]: Session 7
+      - generic [ref=e5516]: Session 8
+      - generic [ref=e5519]: Session 9
+      - generic [ref=e5522]: Session 10
+      - generic [ref=e5525]: Session 11
+      - generic [ref=e5528]: Push 1
+      - generic [ref=e5531]: Push 2
+      - generic [ref=e5534]: Push 3
+      - generic [ref=e5537]: Push 4
+      - generic [ref=e5540]: Push 5
+      - generic [ref=e5543]: Push 6
+      - generic [ref=e5546]: Push 7
+      - generic [ref=e5549]: Push 8
+      - generic [ref=e5552]: Push 9
+      - generic [ref=e5555]: Push 10
+      - generic [ref=e5558]: Push 11
+      - generic [ref=e5561]: Push 12
+      - generic [ref=e5564]: Telemetry 1
+      - generic [ref=e5567]: Telemetry 2
+      - generic [ref=e5570]: Telemetry 3
+      - generic [ref=e5573]: Telemetry 4
+      - generic [ref=e5576]: Telemetry 5
+      - generic [ref=e5579]: Telemetry 6
+      - generic [ref=e5582]: Telemetry 7
+      - generic [ref=e5585]: Telemetry 8
+      - generic [ref=e5588]: Telemetry 9
+      - generic [ref=e5591]: Telemetry 10
+      - generic [ref=e5594]: Telemetry 11
+      - generic [ref=e5597]: Telemetry 12
+      - generic [ref=e5600]: Cart 1
+      - generic [ref=e5603]: Cart 2
+      - generic [ref=e5606]: Cart 3
+      - generic [ref=e5609]: Cart 4
+      - generic [ref=e5612]: Cart 5
+      - generic [ref=e5615]: Cart 6
+      - generic [ref=e5618]: Cart 7
+      - generic [ref=e5621]: Cart 8
+      - generic [ref=e5624]: Cart 9
+      - generic [ref=e5627]: Cart 10
+      - generic [ref=e5630]: Cart 11
+      - generic [ref=e5633]: Cart 12
+      - generic [ref=e5636]: Checkout 1
+      - generic [ref=e5639]: Checkout 2
+      - generic [ref=e5642]: Checkout 3
+      - generic [ref=e5645]: Checkout 4
+      - generic [ref=e5648]: Checkout 5
+      - generic [ref=e5651]: Checkout 6
+      - generic [ref=e5654]: Checkout 7
+      - generic [ref=e5657]: Checkout 8
+      - generic [ref=e5660]: Checkout 9
+      - generic [ref=e5663]: Checkout 10
+      - generic [ref=e5666]: Checkout 11
+      - generic [ref=e5669]: Checkout 12
+      - generic [ref=e5672]: Billing 1
+      - generic [ref=e5675]: Billing 2
+      - generic [ref=e5678]: Billing 3
+      - generic [ref=e5681]: Billing 4
+      - generic [ref=e5684]: Billing 5
+      - generic [ref=e5687]: Billing 6
+      - generic [ref=e5690]: Billing 7
+      - generic [ref=e5693]: Billing 8
+      - generic [ref=e5696]: Billing 9
+      - generic [ref=e5699]: Billing 10
+      - generic [ref=e5702]: Billing 11
+      - generic [ref=e5705]: Billing 12
+      - generic [ref=e5708]: Fraud 1
+      - generic [ref=e5711]: Fraud 2
+      - generic [ref=e5714]: Fraud 3
+      - generic [ref=e5717]: Fraud 4
+      - generic [ref=e5720]: Fraud 5
+      - generic [ref=e5723]: Fraud 6
+      - generic [ref=e5726]: Fraud 7
+      - generic [ref=e5729]: Fraud 8
+      - generic [ref=e5732]: Fraud 9
+      - generic [ref=e5735]: Fraud 10
+      - generic [ref=e5738]: Fraud 11
+      - generic [ref=e5741]: Catalog 1
+      - generic [ref=e5744]: Catalog 2
+      - generic [ref=e5747]: Catalog 3
+      - generic [ref=e5750]: Catalog 4
+      - generic [ref=e5753]: Catalog 5
+      - generic [ref=e5756]: Catalog 6
+      - generic [ref=e5759]: Catalog 7
+      - generic [ref=e5762]: Catalog 8
+      - generic [ref=e5765]: Catalog 9
+      - generic [ref=e5768]: Catalog 10
+      - generic [ref=e5771]: Catalog 11
+      - generic [ref=e5774]: Catalog 12
+      - generic [ref=e5777]: Catalog 13
+      - generic [ref=e5780]: Stock 1
+      - generic [ref=e5783]: Stock 2
+      - generic [ref=e5786]: Stock 3
+      - generic [ref=e5789]: Stock 4
+      - generic [ref=e5792]: Stock 5
+      - generic [ref=e5795]: Stock 6
+      - generic [ref=e5798]: Stock 7
+      - generic [ref=e5801]: Stock 8
+      - generic [ref=e5804]: Stock 9
+      - generic [ref=e5807]: Stock 10
+      - generic [ref=e5810]: Stock 11
+      - generic [ref=e5813]: Routing 1
+      - generic [ref=e5816]: Routing 2
+      - generic [ref=e5819]: Routing 3
+      - generic [ref=e5822]: Routing 4
+      - generic [ref=e5825]: Routing 5
+      - generic [ref=e5828]: Routing 6
+      - generic [ref=e5831]: Routing 7
+      - generic [ref=e5834]: Routing 8
+      - generic [ref=e5837]: Routing 9
+      - generic [ref=e5840]: Routing 10
+      - generic [ref=e5843]: Routing 11
+      - generic [ref=e5846]: Routing 12
+      - generic [ref=e5849]: Tracking 1
+      - generic [ref=e5852]: Tracking 2
+      - generic [ref=e5855]: Tracking 3
+      - generic [ref=e5858]: Tracking 4
+      - generic [ref=e5861]: Tracking 5
+      - generic [ref=e5864]: Tracking 6
+      - generic [ref=e5867]: Tracking 7
+      - generic [ref=e5870]: Tracking 8
+      - generic [ref=e5873]: Tracking 9
+      - generic [ref=e5876]: Tracking 10
+      - generic [ref=e5879]: Tracking 11
+      - generic [ref=e5882]: Tracking 12
+      - generic [ref=e5885]: Email 1
+      - generic [ref=e5888]: Email 2
+      - generic [ref=e5891]: Email 3
+      - generic [ref=e5894]: Email 4
+      - generic [ref=e5897]: Email 5
+      - generic [ref=e5900]: Email 6
+      - generic [ref=e5903]: Email 7
+      - generic [ref=e5906]: Email 8
+      - generic [ref=e5909]: Email 9
+      - generic [ref=e5912]: Email 10
+      - generic [ref=e5915]: Email 11
+      - generic [ref=e5918]: SMS 1
+      - generic [ref=e5921]: SMS 2
+      - generic [ref=e5924]: SMS 3
+      - generic [ref=e5927]: SMS 4
+      - generic [ref=e5930]: SMS 5
+      - generic [ref=e5933]: SMS 6
+      - generic [ref=e5936]: SMS 7
+      - generic [ref=e5939]: SMS 8
+      - generic [ref=e5942]: SMS 9
+      - generic [ref=e5945]: SMS 10
+      - generic [ref=e5948]: SMS 11
+      - generic [ref=e5951]: SMS 12
+      - generic [ref=e5954]: Ingest 1
+      - generic [ref=e5957]: Ingest 2
+      - generic [ref=e5960]: Ingest 3
+      - generic [ref=e5963]: Ingest 4
+      - generic [ref=e5966]: Ingest 5
+      - generic [ref=e5969]: Ingest 6
+      - generic [ref=e5972]: Ingest 7
+      - generic [ref=e5975]: Ingest 8
+      - generic [ref=e5978]: Ingest 9
+      - generic [ref=e5981]: Ingest 10
+      - generic [ref=e5984]: Ingest 11
+      - generic [ref=e5987]: Ingest 12
+      - generic [ref=e5990]: Ingest 13
+      - generic [ref=e5993]: Reporting 1
+      - generic [ref=e5996]: Reporting 2
+      - generic [ref=e5999]: Reporting 3
+      - generic [ref=e6002]: Reporting 4
+      - generic [ref=e6005]: Reporting 5
+      - generic [ref=e6008]: Reporting 6
+      - generic [ref=e6011]: Reporting 7
+      - generic [ref=e6014]: Reporting 8
+      - generic [ref=e6017]: Reporting 9
+      - generic [ref=e6020]: Reporting 10
+      - generic [ref=e6023]: Reporting 11

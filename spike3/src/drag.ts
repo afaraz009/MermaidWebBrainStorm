@@ -2,9 +2,10 @@ import {
   updateNodePosition,
   refreshEdgesFromLayout,
 } from './renderer.js';
-import { routeEdge, DEFAULT_CONFIG } from './routing.js';
+import { routeEdgesBatch, DEFAULT_CONFIG } from './routing.js';
 import { renderGridOverlay, isGridOverlayShown } from './gridOverlay.js';
 import { astarSettings } from './astarSettings.js';
+import { layout } from './layout.js';
 import type { IR } from './types.js';
 
 export function attachDrag(svg: SVGSVGElement, ir: IR, mountEl: SVGElement): () => void {
@@ -74,17 +75,26 @@ export function attachDrag(svg: SVGSVGElement, ir: IR, mountEl: SVGElement): () 
       }
     }
 
-    // Plain A* re-route for every edge touching the dropped node. Result is a
-    // raw corner polyline: [startBorder, corner_1, ..., corner_n, endBorder].
-    // When no obstacle sits between the two nodes, A* returns a straight line
-    // (no corners) and the rendered edge is a single straight segment. When
-    // an obstacle is in the way, corners appear at the bend points.
-    const connectedEdges = ir.edges.filter(e => e.from === droppedId || e.to === droppedId);
-    for (const edge of connectedEdges) {
-      const fromNode = ir.nodes.find(n => n.id === edge.from);
-      const toNode   = ir.nodes.find(n => n.id === edge.to);
-      if (!fromNode || !toNode) continue;
-      edge.routedPath = routeEdge(fromNode, toNode, ir, DEFAULT_CONFIG);
+    // A*-route every edge in the graph using the active separation mode so a
+    // single drop produces a self-consistent picture. We can't route only the
+    // dropped node's edges: with separation = 'soft'/'hard', the cost/block
+    // buffer needs every edge's cells in scope, otherwise the dragged edges
+    // would ignore the long-running edges they should be avoiding (and would
+    // revert to "default A* style" overlapping at the dock). Cheap enough on
+    // realistic fixtures — same path the toggle and collapse handlers use.
+    //
+    // When the A* feature is toggled off, we skip re-routing entirely so the
+    // edge falls back to dagre's curved `originalPoints` on the next redraw.
+    if (astarSettings.enabled) {
+      routeEdgesBatch(ir.edges, ir, DEFAULT_CONFIG, astarSettings.separation);
+    } else {
+      // A* is off — clear any stale A* paths and re-run dagre with the dropped
+      // node pinned so every edge gets a fresh `originalPoints` for the new
+      // geometry. Without this, refreshEdgesFromLayout would replay the
+      // pre-drag dagre points and edges would visibly disconnect from the
+      // moved node (matches the behavior in `../spike/src/drag.ts`).
+      for (const edge of ir.edges) delete edge.routedPath;
+      layout(ir);
     }
 
     refreshEdgesFromLayout(mountEl);

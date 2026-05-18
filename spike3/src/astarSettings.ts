@@ -3,6 +3,13 @@
 
 export type HeuristicName = 'manhattan' | 'octile' | 'euclidean' | 'chebyshev' | 'zero';
 export type Connectivity = 4 | 8;
+// How aggressively to push parallel edges apart in batch (full re-route) mode:
+//   'off'  — independent A* per edge, paths may overlap.
+//   'soft' — earlier edges add a per-cell penalty; later edges prefer free
+//            cells but may share where space is tight.
+//   'hard' — earlier edges hard-block their cells; later edges must find a
+//            disjoint route or fall back to a straight line.
+export type EdgeSeparation = 'off' | 'soft' | 'hard';
 
 export interface AstarSettings {
   cellSize: number;
@@ -11,6 +18,12 @@ export interface AstarSettings {
   connectivity: Connectivity;
   cornerCut: boolean;
   heuristic: HeuristicName;
+  // When false, edges keep their dagre-routed `originalPoints` and drag /
+  // re-route paths skip the A* pass — UI toggle for "Hide A* Feature".
+  enabled: boolean;
+  // Edge-separation mode for full re-routes (toggle-on, expand/collapse).
+  // Drag re-routes ignore this setting and always run independent A*.
+  separation: EdgeSeparation;
 }
 
 export const astarSettings: AstarSettings = {
@@ -20,9 +33,11 @@ export const astarSettings: AstarSettings = {
   // sync if cellSize ever changes at runtime.
   padding: 10,
   marginCells: 4,
-  connectivity: 8,
+  connectivity: 4,
   cornerCut: false,
-  heuristic: 'octile',
+  heuristic: 'manhattan',
+  enabled: true,
+  separation: 'off',
 };
 
 // A snapshot of the cells A* touched on its most recent invocation. Used by
