@@ -1,7 +1,7 @@
 {
-  "name": "spike2",
+  "name": "spike3",
   "version": "1.0.0",
-  "description": "A* edge routing on node drop",
+  "description": "Subgraph collapse / expand on top of A* edge routing",
   "scripts": {
     "dev": "vite",
     "build": "vite build"
