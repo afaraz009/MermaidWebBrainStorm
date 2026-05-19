@@ -1,0 +1,35 @@
+flowchart TD
+
+    %% =========================
+    %% Shape gallery — one of every Mermaid flowchart node shape.
+    %% Used to eyeball renderer parity and verify edge clipping on each outline.
+    %% =========================
+
+    RECT[Rectangle]
+    ROUND(Rounded)
+    STAD([Stadium])
+    SUB[[Subroutine]]
+    DB[(Cylinder)]
+    CIRC((Circle))
+    DCIRC(((Double Circle)))
+    DIA{Diamond}
+    HEX{{Hexagon}}
+    PARA[/Parallelogram/]
+    PARAL[\Parallelogram alt\]
+    TRAP[/Trapezoid\]
+    TRAPL[\Trapezoid alt/]
+    ASYM>Asymmetric]
+
+    RECT --> ROUND
+    ROUND --> STAD
+    STAD --> SUB
+    SUB --> DB
+    DB --> CIRC
+    CIRC --> DCIRC
+    DCIRC --> DIA
+    DIA --> HEX
+    HEX --> PARA
+    PARA --> PARAL
+    PARAL --> TRAP
+    TRAP --> TRAPL
+    TRAPL --> ASYM

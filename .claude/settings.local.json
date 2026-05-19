@@ -11,7 +11,8 @@
       "mcp__plugin_playwright_playwright__browser_select_option",
       "mcp__plugin_playwright_playwright__browser_navigate",
       "Bash(git -C E:/CODE/MermaidWebBrainStorm log --oneline -1 ed6acb9)",
-      "Bash(git -C E:/CODE/MermaidWebBrainStorm show --stat ed6acb9)"
+      "Bash(git -C E:/CODE/MermaidWebBrainStorm show --stat ed6acb9)",
+      "Bash(echo \"EXIT=$?\")"
     ]
   }
 }
