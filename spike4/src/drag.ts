@@ -1,11 +1,11 @@
 import {
   updateNodePosition,
   refreshEdgesFromLayout,
+  buildSideAwareCurvesForNode,
 } from './renderer.js';
 import { routeEdgesBatch, DEFAULT_CONFIG } from './routing.js';
 import { renderGridOverlay, isGridOverlayShown } from './gridOverlay.js';
 import { astarSettings } from './astarSettings.js';
-import { layout } from './layout.js';
 import type { IR } from './types.js';
 
 export function attachDrag(svg: SVGSVGElement, ir: IR, mountEl: SVGElement): () => void {
@@ -89,13 +89,30 @@ export function attachDrag(svg: SVGSVGElement, ir: IR, mountEl: SVGElement): () 
     if (astarSettings.enabled) {
       routeEdgesBatch(ir.edges, ir, DEFAULT_CONFIG, astarSettings.separation);
     } else {
-      // A* is off — clear any stale A* paths and re-run dagre with the dropped
-      // node pinned so every edge gets a fresh `originalPoints` for the new
-      // geometry. Without this, refreshEdgesFromLayout would replay the
-      // pre-drag dagre points and edges would visibly disconnect from the
-      // moved node (matches the behavior in `../spike/src/drag.ts`).
-      for (const edge of ir.edges) delete edge.routedPath;
-      layout(ir);
+      // A* is off — DON'T re-run dagre. A full re-layout would discard the
+      // side-aware geometry the drag established and replay edge points from
+      // dagre's rank-based routing, which is what produced the original fold
+      // bug. Instead, persist the same distributed side-aware curves we drew
+      // live during the drag, so the visible edge doesn't jump on mouseup
+      // and parallel edges stay spread along the node side instead of
+      // stacking on the midpoint.
+      const droppedNode = node;
+      if (droppedNode) {
+        const connectedEdges = ir.edges.filter(e => e.from === droppedId || e.to === droppedId);
+        const nodesById = new Map(ir.nodes.map(n => [n.id, n]));
+        const curves = buildSideAwareCurvesForNode(
+          droppedNode,
+          connectedEdges.map(e => ({ from: e.from, to: e.to, ref: e })),
+          nodesById,
+        );
+        for (const edge of connectedEdges) {
+          delete edge.routedPath;
+          const pts = curves.get(edge);
+          if (!pts) continue;
+          edge.originalPoints = pts.map(p => ({ ...p }));
+          edge.points = pts.map(p => ({ ...p }));
+        }
+      }
     }
 
     refreshEdgesFromLayout(mountEl);

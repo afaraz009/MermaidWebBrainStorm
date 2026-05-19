@@ -1,5 +1,5 @@
 import { graphlib, layout as dagreLayout } from '@dagrejs/dagre';
-import type { IR, IRNode, IRSubgraph, NodeShape } from './types.js';
+import type { IR, NodeShape } from './types.js';
 import { clipToBorder } from './border.js';
 import { astarSettings } from './astarSettings.js';
 
@@ -52,37 +52,15 @@ function sizeForShape(shape: NodeShape, labelLen: number): { w: number; h: numbe
   return { w: Math.max(base.w, textW), h: base.h };
 }
 
-// Order nodes so dagre sees them grouped by subgraph in the same order used
-// for subgraph insertion. Inside each subgraph, preserve the original
-// declaration order so dagre's intra-subgraph ranking is unaffected.
-// Nodes with no parent come last.
-function orderNodesForLayout(ir: IR, orderedSubgraphs: IRSubgraph[]): IRNode[] {
-  const nodesByParent = new Map<string, IRNode[]>();
-  const orphans: IRNode[] = [];
-  for (const n of ir.nodes) {
-    if (n.parent) {
-      if (!nodesByParent.has(n.parent)) nodesByParent.set(n.parent, []);
-      nodesByParent.get(n.parent)!.push(n);
-    } else {
-      orphans.push(n);
-    }
-  }
-  const out: IRNode[] = [];
-  for (const sg of orderedSubgraphs) {
-    const kids = nodesByParent.get(sg.id);
-    if (kids) out.push(...kids);
-  }
-  out.push(...orphans);
-  return out;
-}
+// Walk inter-cluster edges to identify cycles between top-level subgraphs.
+// Returns the set of IR edges that should be reversed for dagre layout so the
+// resulting subgraph ordering matches Mermaid's reference (later-declared
+// subgraph above earlier-declared on a cycle). The reversal is undone for
+// rendering — dagre's edge points are flipped back to the original direction.
+function chooseEdgesToReverseForMermaidOrder(ir: IR): Set<import('./types.js').IREdge> {
+  if (ir.subgraphs.length === 0) return new Set();
 
-// A "source" subgraph is one with no incoming inter-cluster edges — that is,
-// no edge whose target lies inside this subgraph (recursively, through nested
-// subgraphs) and whose source lies outside it. Source subgraphs in dagre's
-// compound layout are the ones that need the reverse-declaration-order bias
-// to match Mermaid; sinks and intermediates are left in declaration order.
-function orderSubgraphsForLayout(ir: IR): IRSubgraph[] {
-  // Map every node id -> its top-level (root) subgraph id, if any.
+  // Map every node to its top-level (root) subgraph id, or undefined.
   const sgById = new Map(ir.subgraphs.map(sg => [sg.id, sg]));
   function rootSgOf(sgId: string | undefined): string | undefined {
     let cur = sgId;
@@ -97,64 +75,85 @@ function orderSubgraphsForLayout(ir: IR): IRSubgraph[] {
   const nodeRootSg = new Map<string, string | undefined>();
   for (const n of ir.nodes) nodeRootSg.set(n.id, rootSgOf(n.parent));
 
-  // For each top-level subgraph, is it a source? (no edge from outside ends inside it)
-  const incoming = new Set<string>();
+  // Declaration-order index for each top-level subgraph.
+  const sgIndex = new Map<string, number>();
+  ir.subgraphs.filter(sg => !sg.parent).forEach((sg, i) => sgIndex.set(sg.id, i));
+
+  // Build an inter-cluster adjacency: for each ordered pair (A, B) of distinct
+  // top-level subgraphs, does at least one edge go from A to B?
+  const adj = new Map<string, Set<string>>();
   for (const e of ir.edges) {
-    const fromRoot = nodeRootSg.get(e.from);
-    const toRoot = nodeRootSg.get(e.to);
-    if (toRoot && fromRoot !== toRoot) incoming.add(toRoot);
+    const fromSg = nodeRootSg.get(e.from);
+    const toSg = nodeRootSg.get(e.to);
+    if (!fromSg || !toSg || fromSg === toSg) continue;
+    if (!sgIndex.has(fromSg) || !sgIndex.has(toSg)) continue;
+    if (!adj.has(fromSg)) adj.set(fromSg, new Set());
+    adj.get(fromSg)!.add(toSg);
   }
 
-  // Partition top-level subgraphs by source/non-source, preserving declaration order.
-  const topLevel = ir.subgraphs.filter(sg => !sg.parent);
-  const sources = topLevel.filter(sg => !incoming.has(sg.id));
-  const others  = topLevel.filter(sg =>  incoming.has(sg.id));
-
-  // Sources reversed; others forward. Then nested subgraphs (which we leave
-  // in declaration order — they're column-ordered inside their parent and
-  // the source/sink rule is about top-level columns).
-  const nested = ir.subgraphs.filter(sg => sg.parent);
-  return [...sources.reverse(), ...others, ...nested];
+  // For each edge that goes earlier→later subgraph, check if there's also a
+  // path back (later→…→earlier). If yes, mark this edge for reversal so dagre
+  // ranks the later-declared subgraph above the earlier one.
+  const toReverse = new Set<import('./types.js').IREdge>();
+  for (const e of ir.edges) {
+    const fromSg = nodeRootSg.get(e.from);
+    const toSg = nodeRootSg.get(e.to);
+    if (!fromSg || !toSg || fromSg === toSg) continue;
+    const fi = sgIndex.get(fromSg);
+    const ti = sgIndex.get(toSg);
+    if (fi == null || ti == null) continue;
+    if (fi >= ti) continue;  // already goes later→earlier or same — leave it
+    // BFS from `toSg` to see if we can reach `fromSg` via inter-cluster edges.
+    const seen = new Set<string>([toSg]);
+    const queue: string[] = [toSg];
+    let cycle = false;
+    while (queue.length) {
+      const cur = queue.shift()!;
+      const next = adj.get(cur);
+      if (!next) continue;
+      for (const n of next) {
+        if (n === fromSg) { cycle = true; break; }
+        if (!seen.has(n)) { seen.add(n); queue.push(n); }
+      }
+      if (cycle) break;
+    }
+    if (cycle) toReverse.add(e);
+  }
+  return toReverse;
 }
 
 export function layout(ir: IR): IR {
-  const g = new graphlib.Graph({ compound: true });
-  g.setGraph({ rankdir: 'TB', nodesep: 50, ranksep: 60, marginx: 30, marginy: 30 });
+  // Match Mermaid's dagre setup so subgraph rank/column placement aligns with
+  // the reference renderer. Mermaid uses `multigraph: true, compound: true`
+  // with no explicit acyclicer and lets @dagrejs default-rank the graph.
+  const g = new graphlib.Graph({ multigraph: true, compound: true });
+  g.setGraph({
+    rankdir: 'TB',
+    nodesep: 50,
+    ranksep: 50,
+    marginx: 8,
+    marginy: 8,
+  });
   g.setDefaultEdgeLabel(() => ({}));
 
   const cell = astarSettings.cellSize;
 
-  // Mermaid Compatibility: bias dagre's column placement for sibling
-  // subgraphs. Dagre tends to place earlier-inserted siblings further right;
-  // Mermaid's column order differs subtly. The rule that matches Mermaid on
-  // typical flowchart-TD fixtures:
-  //   - "Source" subgraphs (no incoming inter-cluster edges) are inserted in
-  //     REVERSE declaration order, so the later-declared source ends up
-  //     leftmost (e.g., DEVOPS declared after FRONTEND but rendered left of
-  //     FRONTEND).
-  //   - All other subgraphs ("sinks" or "intermediate") are inserted in
-  //     forward declaration order, preserving dagre's natural ranking
-  //     between them (e.g., BACKEND left of DATABASE).
-  const subgraphsForLayout = orderSubgraphsForLayout(ir);
-
   // Subgraph compound nodes — size also snapped to cellSize so subgraph
-  // boundaries align with grid lines.
-  for (const sg of subgraphsForLayout) {
+  // boundaries align with grid lines. Insertion order matches IR declaration
+  // order (same as Mermaid).
+  for (const sg of ir.subgraphs) {
     g.setNode(sg.id, {
       label: sg.label,
       width: ceilTo(sg.label.length * 8 + 24, cell),
       height: ceilTo(30, cell),
     });
   }
-  for (const sg of subgraphsForLayout) {
+  for (const sg of ir.subgraphs) {
     if (sg.parent) g.setParent(sg.id, sg.parent);
   }
 
-  // Leaf nodes — grouped by their parent subgraph in the same order used for
-  // subgraph insertion, so dagre's intra-subgraph ranking is preserved while
-  // sibling subgraphs are biased by the source/sink rule above.
-  const nodesForLayout = orderNodesForLayout(ir, subgraphsForLayout);
-  for (const n of nodesForLayout) {
+  // Leaf nodes in IR declaration order.
+  for (const n of ir.nodes) {
     const { w: rawW, h: rawH } = sizeForShape(n.shape, n.label.length);
     const width = ceilTo(rawW, cell);
     const height = ceilTo(rawH, cell);
@@ -166,9 +165,22 @@ export function layout(ir: IR): IR {
     if (n.parent) g.setParent(n.id, n.parent);
   }
 
-  // Edges in declaration order
+  // Detect inter-cluster edges that form a cycle and pick which ones to
+  // reverse for dagre layout. Mermaid's reference puts the LATER-declared
+  // subgraph above the EARLIER-declared one when there's a cycle between
+  // them. To match: for each inter-cluster edge whose source subgraph was
+  // declared BEFORE its target subgraph AND a reverse path exists (cycle),
+  // reverse the edge in dagre's view so the later-declared cluster ranks
+  // higher. The original direction is preserved for rendering via
+  // `reversedEdges` — we swap the points back after dagre runs.
+  const reversedEdges = chooseEdgesToReverseForMermaidOrder(ir);
+
   for (const e of ir.edges) {
-    g.setEdge(e.from, e.to, { label: e.label || '', weight: 1 });
+    if (reversedEdges.has(e)) {
+      g.setEdge(e.to, e.from, { label: e.label || '', weight: 1 });
+    } else {
+      g.setEdge(e.from, e.to, { label: e.label || '', weight: 1 });
+    }
   }
 
   dagreLayout(g);
@@ -203,9 +215,11 @@ export function layout(ir: IR): IR {
   // Write edge waypoints, border-clipping the first and last point so
   // endpoints sit on the node edge rather than at the center.
   for (const e of ir.edges) {
-    const ge = g.edge(e.from, e.to);
+    const rev = reversedEdges.has(e);
+    const ge = rev ? g.edge(e.to, e.from) : g.edge(e.from, e.to);
     if (ge && ge.points) {
       let pts = (ge.points as { x: number; y: number }[]).map(p => ({ x: p.x, y: p.y }));
+      if (rev) pts.reverse();
       const fromNode = ir.nodes.find(n => n.id === e.from);
       const toNode   = ir.nodes.find(n => n.id === e.to);
       if (pts.length >= 2 && fromNode && toNode) {

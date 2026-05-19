@@ -231,6 +231,331 @@ function anchoredPts(pts: { x: number; y: number }[]): { x: number; y: number }[
   return [pts[0], ...pts, pts[pts.length - 1]];
 }
 
+type Side = 'top' | 'bottom' | 'left' | 'right';
+type Axis = 'vertical' | 'horizontal' | 'overlap';
+
+// Classify the dominant axis of separation between two nodes by their bboxes.
+//   'vertical'   — the nodes are clearly above/below each other (their X
+//                  projections don't overlap, OR vertical clearance > horizontal)
+//   'horizontal' — clearly side-by-side
+//   'overlap'    — bboxes overlap on both axes; no clean "side" applies and
+//                  edges should fall back to clip-to-border for smoothness.
+// Using bbox clearance (not center-to-center direction) gives hysteresis: the
+// side only flips when one node *fully* passes the other on that axis, so a
+// node moving past a peer doesn't snap to a new side mid-overlap.
+function classifyAxis(a: IRNode, b: IRNode): Axis {
+  const ahw = (a.width ?? 80) / 2, ahh = (a.height ?? 40) / 2;
+  const bhw = (b.width ?? 80) / 2, bhh = (b.height ?? 40) / 2;
+  const dx = Math.abs((b.x ?? 0) - (a.x ?? 0)) - (ahw + bhw);
+  const dy = Math.abs((b.y ?? 0) - (a.y ?? 0)) - (ahh + bhh);
+  // Both axes overlap → nodes are interpenetrating or directly adjacent.
+  if (dx < 0 && dy < 0) return 'overlap';
+  // Whichever axis has the larger positive clearance wins.
+  if (dy >= dx) return 'vertical';
+  return 'horizontal';
+}
+
+// Pick the side of `node` that faces `toward`. Uses a normalized comparison so
+// nodes with very different aspect ratios (e.g., tall diamond vs wide
+// parallelogram) pick the correct face — purely comparing |dx| vs |dy| would
+// over-prefer the vertical axis on tall nodes.
+function chooseSide(node: IRNode, toward: { x: number; y: number }): Side {
+  const cx = node.x ?? 0;
+  const cy = node.y ?? 0;
+  const hw = (node.width ?? 80) / 2;
+  const hh = (node.height ?? 40) / 2;
+  const dx = toward.x - cx;
+  const dy = toward.y - cy;
+  // Compare slopes against the node's half-width:half-height ratio. If
+  // |dy|/hh > |dx|/hw the connection is more vertical → top or bottom.
+  if (Math.abs(dy) * hw > Math.abs(dx) * hh) {
+    return dy >= 0 ? 'bottom' : 'top';
+  }
+  return dx >= 0 ? 'right' : 'left';
+}
+
+// Side of `node` that faces `peer`, constrained to a specific axis. Used by
+// the bbox-aware path: once classifyAxis() picks the dominant axis, both
+// endpoints anchor on that axis so the edge runs cleanly between facing sides
+// instead of flipping mid-drag.
+function sideOnAxis(node: IRNode, peer: IRNode, axis: 'vertical' | 'horizontal'): Side {
+  if (axis === 'vertical') {
+    return ((peer.y ?? 0) >= (node.y ?? 0)) ? 'bottom' : 'top';
+  }
+  return ((peer.x ?? 0) >= (node.x ?? 0)) ? 'right' : 'left';
+}
+
+// Anchor point at the midpoint of the chosen side, on the node's outline.
+function anchorOnSide(node: IRNode, side: Side): { x: number; y: number } {
+  const cx = node.x ?? 0;
+  const cy = node.y ?? 0;
+  const hw = (node.width ?? 80) / 2;
+  const hh = (node.height ?? 40) / 2;
+  switch (side) {
+    case 'top':    return { x: cx,      y: cy - hh };
+    case 'bottom': return { x: cx,      y: cy + hh };
+    case 'left':   return { x: cx - hw, y: cy      };
+    case 'right':  return { x: cx + hw, y: cy      };
+  }
+}
+
+// Pair of (side, point) anchors for the two endpoints of an edge during drag.
+export function sideAwareAnchors(
+  fromNode: IRNode,
+  toNode: IRNode,
+): {
+  from: { side: Side; point: { x: number; y: number } };
+  to:   { side: Side; point: { x: number; y: number } };
+} {
+  const fromCenter = { x: fromNode.x ?? 0, y: fromNode.y ?? 0 };
+  const toCenter   = { x: toNode.x   ?? 0, y: toNode.y   ?? 0 };
+  const fromSide = chooseSide(fromNode, toCenter);
+  const toSide   = chooseSide(toNode,   fromCenter);
+  return {
+    from: { side: fromSide, point: anchorOnSide(fromNode, fromSide) },
+    to:   { side: toSide,   point: anchorOnSide(toNode,   toSide)   },
+  };
+}
+
+// Build the 4-point curve used during drag / persisted on drop: anchor on each
+// node's facing side + a short perpendicular stub for clean exit/entry.
+// Centralized here so drag-time rendering and post-drop persistence stay in
+// sync — both end up with the same geometry, so the visible edge doesn't snap
+// from "side-aware curve" back to "dagre originalPoints" on mouseup.
+export function buildSideAwareCurve(
+  fromNode: IRNode,
+  toNode: IRNode,
+  stubDist = 16,
+): { x: number; y: number }[] {
+  const { from: a, to: b } = sideAwareAnchors(fromNode, toNode);
+  return [a.point, stubFromSide(a.side, a.point, stubDist), stubFromSide(b.side, b.point, stubDist), b.point];
+}
+
+// Compute smooth, intelligent edge curves for every edge touching `pivotNode`.
+//
+// Per-edge strategy (decided by the bbox relationship between pivot and peer):
+//   • "vertical"   — peer fully above/below pivot. Anchor on top/bottom sides.
+//   • "horizontal" — peer fully left/right. Anchor on left/right sides.
+//   • "overlap"    — bboxes interpenetrate. Anchor via clipToBorder (radial
+//                    intersection from each center toward the other), which
+//                    slides smoothly along the outline as the node moves and
+//                    avoids the visible "snap" of a discrete side change.
+//
+// For the discrete (non-overlap) edges, edges sharing a pivot side are
+// distributed across the inner 80% of that side (sorted by peer position so
+// they don't cross) so multiple edges fan out instead of stacking at the
+// midpoint.
+//
+// Returns a Map keyed by the caller's `ref` so the caller can write the points
+// back onto IR / displayPoints without re-deriving identity.
+export function buildSideAwareCurvesForNode(
+  pivotNode: IRNode,
+  edges: { from: string; to: string; ref: unknown }[],
+  nodesById: Map<string, IRNode>,
+  stubDist = 16,
+): Map<unknown, { x: number; y: number }[]> {
+  type Item = { ref: unknown; peer: IRNode; isOutgoing: boolean };
+  const bySide: Record<Side, Item[]> = { top: [], bottom: [], left: [], right: [] };
+  const overlapItems: Item[] = [];
+
+  for (const e of edges) {
+    const isOutgoing = e.from === pivotNode.id;
+    const peerId = isOutgoing ? e.to : e.from;
+    const peer = nodesById.get(peerId);
+    if (!peer) continue;
+    const axis = classifyAxis(pivotNode, peer);
+    if (axis === 'overlap') {
+      overlapItems.push({ ref: e.ref, peer, isOutgoing });
+    } else {
+      const side = sideOnAxis(pivotNode, peer, axis);
+      bySide[side].push({ ref: e.ref, peer, isOutgoing });
+    }
+  }
+
+  const out = new Map<unknown, { x: number; y: number }[]>();
+
+  // Overlap edges — radial clip-to-border on both endpoints. Smooth and
+  // continuous; no side-snap. Stub away from each anchor along the local
+  // outward normal so the basis curve has a defined tangent.
+  for (const it of overlapItems) {
+    const pivotCenter = { x: pivotNode.x ?? 0, y: pivotNode.y ?? 0 };
+    const peerCenter  = { x: it.peer.x  ?? 0, y: it.peer.y  ?? 0 };
+    const pivotAnchor = clipToBorder(pivotNode, peerCenter);
+    const peerAnchor  = clipToBorder(it.peer,   pivotCenter);
+    const pivotStub = stubAlongNormal(pivotCenter, pivotAnchor, stubDist);
+    const peerStub  = stubAlongNormal(peerCenter,  peerAnchor,  stubDist);
+    const pts = it.isOutgoing
+      ? [pivotAnchor, pivotStub, peerStub, peerAnchor]
+      : [peerAnchor,  peerStub,  pivotStub, pivotAnchor];
+    out.set(it.ref, pts);
+  }
+
+  // Discrete-side edges — distribute along the chosen pivot side.
+  const cx = pivotNode.x ?? 0;
+  const cy = pivotNode.y ?? 0;
+  const hw = (pivotNode.width ?? 80) / 2;
+  const hh = (pivotNode.height ?? 40) / 2;
+
+  for (const side of ['top', 'bottom', 'left', 'right'] as Side[]) {
+    const items = bySide[side];
+    if (items.length === 0) continue;
+    const horizontal = side === 'top' || side === 'bottom';
+    items.sort((a, b) =>
+      horizontal
+        ? (a.peer.x ?? 0) - (b.peer.x ?? 0)
+        : (a.peer.y ?? 0) - (b.peer.y ?? 0),
+    );
+
+    const span = horizontal ? hw * 2 * 0.8 : hh * 2 * 0.8;
+    const n = items.length;
+    for (let i = 0; i < n; i++) {
+      const t = n === 1 ? 0.5 : i / (n - 1);
+      const offset = (t - 0.5) * span;
+      // Virtual target sits along the outward side direction at the offset.
+      // We then clip a ray from the pivot center toward that target onto the
+      // pivot's actual outline — this gives anchors that lie on the real shape
+      // (diamond, hexagon, parallelogram, …) instead of a fictional axis-
+      // aligned bbox side. Mandatory for non-rectangular shapes: without it,
+      // edges visibly stop short of the node outline.
+      let virtualTarget: { x: number; y: number };
+      switch (side) {
+        case 'top':    virtualTarget = { x: cx + offset, y: cy - hh * 2 }; break;
+        case 'bottom': virtualTarget = { x: cx + offset, y: cy + hh * 2 }; break;
+        case 'left':   virtualTarget = { x: cx - hw * 2, y: cy + offset }; break;
+        case 'right':  virtualTarget = { x: cx + hw * 2, y: cy + offset }; break;
+      }
+      const pivotAnchor = clipToBorder(pivotNode, virtualTarget);
+
+      // Peer side is the OPPOSITE of pivot side on the same axis — guaranteed
+      // by classifyAxis. Pinning it avoids the peer's anchor flipping when
+      // the dragged node passes over a corner.
+      const peerSide: Side =
+          side === 'top'    ? 'bottom'
+        : side === 'bottom' ? 'top'
+        : side === 'left'   ? 'right'
+                            : 'left';
+      // Same shape-aware clip for the peer anchor. Aim along the peer's
+      // OUTWARD direction at the peer's bbox center on that side; clipToBorder
+      // returns the actual outline intersection.
+      const pcx = items[i].peer.x ?? 0;
+      const pcy = items[i].peer.y ?? 0;
+      const phw = (items[i].peer.width ?? 80) / 2;
+      const phh = (items[i].peer.height ?? 40) / 2;
+      let peerVirtual: { x: number; y: number };
+      switch (peerSide) {
+        case 'top':    peerVirtual = { x: pcx,           y: pcy - phh * 2 }; break;
+        case 'bottom': peerVirtual = { x: pcx,           y: pcy + phh * 2 }; break;
+        case 'left':   peerVirtual = { x: pcx - phw * 2, y: pcy            }; break;
+        case 'right':  peerVirtual = { x: pcx + phw * 2, y: pcy            }; break;
+      }
+      const peerAnchor = clipToBorder(items[i].peer, peerVirtual);
+      const pivotStub = stubFromSide(side,     pivotAnchor, stubDist);
+      const peerStub  = stubFromSide(peerSide, peerAnchor,  stubDist);
+      // Mermaid-style intermediate waypoints between the two stubs. This
+      // produces the gentle multi-segment swept curve that matches the
+      // reference renderer, without the visible "straight diagonal" that
+      // the 4-point setup gives when nodes are far apart.
+      const mid = midWaypoints(side, peerSide, pivotStub, peerStub);
+      const pts = items[i].isOutgoing
+        ? [pivotAnchor, pivotStub, ...mid, peerStub, peerAnchor]
+        : [peerAnchor,  peerStub,  ...mid.slice().reverse(), pivotStub, pivotAnchor];
+      out.set(items[i].ref, pts);
+    }
+  }
+  return out;
+}
+
+// Manhattan-elbow waypoints between two stubs to produce the multi-segment
+// swept curve that visually matches Mermaid's reference output. The returned
+// points sit between the source stub and the target stub (exclusive) — the
+// caller chains them with [anchor, sourceStub, ...mid, targetStub, anchor].
+//
+// Layout rules:
+//   • Same-axis facing (top↔bottom, or left↔right): a single midpoint placed
+//     on the midline between the two stubs. curveBasis turns this into an
+//     S-bend with the right tangent at both ends.
+//   • Opposite axes (vertical ↔ horizontal): an L-shaped elbow whose corner
+//     sits at (peerStub.x, pivotStub.y) or (pivotStub.x, peerStub.y) — picked
+//     so the corner is on the OUTSIDE of both nodes (further from either
+//     center), giving the gentle wrap-around Mermaid edges have.
+//   • Far apart (long horizontal/vertical run): split the midline into TWO
+//     midpoints (early and late) so the basis interpolation doesn't degrade
+//     into a near-straight diagonal — this preserves the swept look on
+//     edges that span the whole canvas.
+function midWaypoints(
+  sourceSide: Side,
+  targetSide: Side,
+  sourceStub: { x: number; y: number },
+  targetStub: { x: number; y: number },
+): { x: number; y: number }[] {
+  const sourceVertical = sourceSide === 'top' || sourceSide === 'bottom';
+  const targetVertical = targetSide === 'top' || targetSide === 'bottom';
+  const dx = targetStub.x - sourceStub.x;
+  const dy = targetStub.y - sourceStub.y;
+
+  if (sourceVertical && targetVertical) {
+    // Both stubs face vertically. Route via a horizontal segment at the
+    // midline between the two stub Y values. For long runs, use two midpoints
+    // so the curve has body instead of degenerating to a straight diagonal.
+    const midY = (sourceStub.y + targetStub.y) / 2;
+    if (Math.abs(dx) > 200) {
+      return [
+        { x: sourceStub.x, y: midY },
+        { x: targetStub.x, y: midY },
+      ];
+    }
+    return [{ x: (sourceStub.x + targetStub.x) / 2, y: midY }];
+  }
+
+  if (!sourceVertical && !targetVertical) {
+    // Both stubs face horizontally — symmetric to the vertical case.
+    const midX = (sourceStub.x + targetStub.x) / 2;
+    if (Math.abs(dy) > 200) {
+      return [
+        { x: midX, y: sourceStub.y },
+        { x: midX, y: targetStub.y },
+      ];
+    }
+    return [{ x: midX, y: (sourceStub.y + targetStub.y) / 2 }];
+  }
+
+  // Mixed orientation: L-elbow at the corner where the two stub directions
+  // meet. If source is vertical, the elbow sits at (target.x, source.y) —
+  // the source can travel vertically to that corner and the target can
+  // enter horizontally from there. Reversed for the other case.
+  if (sourceVertical) {
+    return [{ x: targetStub.x, y: sourceStub.y }];
+  }
+  return [{ x: sourceStub.x, y: targetStub.y }];
+}
+
+// Short stub from `anchor` along the outward direction (anchor - center).
+// Used in the overlap case where the anchor isn't on a flat side, so we need
+// the outward normal rather than a fixed top/bottom/left/right direction.
+function stubAlongNormal(
+  center: { x: number; y: number },
+  anchor: { x: number; y: number },
+  dist: number,
+): { x: number; y: number } {
+  const dx = anchor.x - center.x;
+  const dy = anchor.y - center.y;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  if (len < 1e-3) return { x: anchor.x, y: anchor.y };
+  return { x: anchor.x + (dx / len) * dist, y: anchor.y + (dy / len) * dist };
+}
+
+// One short stub point perpendicular to the chosen side. Used to seed the
+// curve direction so the path exits/enters the node head-on rather than
+// curling back into it on diagonal connections.
+export function stubFromSide(side: Side, p: { x: number; y: number }, dist: number): { x: number; y: number } {
+  switch (side) {
+    case 'top':    return { x: p.x,        y: p.y - dist };
+    case 'bottom': return { x: p.x,        y: p.y + dist };
+    case 'left':   return { x: p.x - dist, y: p.y        };
+    case 'right':  return { x: p.x + dist, y: p.y        };
+  }
+}
+
 const curveGen = line<{ x: number; y: number }>().x(d => d.x).y(d => d.y).curve(curveBasis);
 
 // Smooth curveBasis path with the last point pulled back so the arrow tip
@@ -271,18 +596,15 @@ export function updateArrowLine(lineEl: SVGLineElement, pts: { x: number; y: num
 }
 
 // Pick the points used for initial render: prefer A*-routed waypoints if the
-// edge has been re-routed, else dagre's originalPoints. Both modes render as
-// straight polyline segments — Mermaid's default edge interpolation is
-// `linear`, so curveBasis-style smoothing here makes our renderer drift away
-// from the reference. (A* output also requires straight segments; the curve
-// branch exists only for callers that explicitly opt in.)
+// edge has been re-routed (straight polylines), else dagre's originalPoints
+// rendered with curveBasis to match Mermaid's default `basis` interpolation.
 type EdgePoints = { pts: { x: number; y: number }[]; mode: 'curve' | 'straight' };
 function initialEdgePoints(e: IREdge): EdgePoints | undefined {
   if (e.routedPath && e.routedPath.length >= 2) {
     return { pts: e.routedPath.map(p => ({ ...p })), mode: 'straight' };
   }
   if (e.originalPoints && e.originalPoints.length > 0) {
-    return { pts: e.originalPoints.map(p => ({ ...p })), mode: 'straight' };
+    return { pts: e.originalPoints.map(p => ({ ...p })), mode: 'curve' };
   }
   return undefined;
 }
@@ -324,7 +646,7 @@ export function renderFull(ir: IR, mountEl: SVGElement, interactive = false, ori
   marker.setAttribute('orient', 'auto-start-reverse');
   const markerPath = el('path');
   markerPath.setAttribute('d', 'M 0 0 L 10 5 L 0 10 z');
-  markerPath.setAttribute('fill', '#555');
+  markerPath.setAttribute('fill', '#333333');
   marker.appendChild(markerPath);
   defs.appendChild(marker);
   mountEl.appendChild(defs);
@@ -427,8 +749,8 @@ export function renderFull(ir: IR, mountEl: SVGElement, interactive = false, ori
     path.setAttribute('class', 'edge-path');
     path.setAttribute('d', dStr);
     path.setAttribute('fill', 'none');
-    path.setAttribute('stroke', '#555');
-    path.setAttribute('stroke-width', '1.5');
+    path.setAttribute('stroke', '#333333');
+    path.setAttribute('stroke-width', '2');
     // Visible stroke is the same logical edge for hover styling, but
     // pointer-events go through to the wider hit area underneath.
     path.setAttribute('pointer-events', 'none');
@@ -439,8 +761,8 @@ export function renderFull(ir: IR, mountEl: SVGElement, interactive = false, ori
 
     const arrowLine = el('line') as SVGLineElement;
     arrowLine.setAttribute('class', 'edge-arrow-line');
-    arrowLine.setAttribute('stroke', '#555');
-    arrowLine.setAttribute('stroke-width', '1.5');
+    arrowLine.setAttribute('stroke', '#333333');
+    arrowLine.setAttribute('stroke-width', '2');
     arrowLine.setAttribute('marker-end', `url(#${ARROW_MARKER_ID})`);
     arrowLine.setAttribute('pointer-events', 'none');
     if (e.style === 'dotted') {
@@ -451,14 +773,16 @@ export function renderFull(ir: IR, mountEl: SVGElement, interactive = false, ori
 
     if (e.label) {
       const mid = pts[Math.floor(pts.length / 2)];
+      const labelW = e.label.length * 7 + 8;
+      const labelH = 16;
       const bg = el('rect');
       bg.setAttribute('class', 'edge-label-bg');
-      bg.setAttribute('x', String(mid.x - 20));
-      bg.setAttribute('y', String(mid.y - 20));
-      bg.setAttribute('width', '40');
-      bg.setAttribute('height', '16');
+      bg.setAttribute('x', String(mid.x - labelW / 2));
+      bg.setAttribute('y', String(mid.y - labelH - 4));
+      bg.setAttribute('width', String(labelW));
+      bg.setAttribute('height', String(labelH));
       bg.setAttribute('fill', 'white');
-      bg.setAttribute('opacity', '0.8');
+      bg.setAttribute('opacity', '0.5');
       const text = el('text');
       text.setAttribute('class', 'edge-label-text');
       text.setAttribute('x', String(mid.x));
@@ -576,28 +900,34 @@ export function updateNodePosition(
   if (!meta) return;
 
   const connectedKeys = meta.adjacency.get(nodeId) || [];
-  for (const key of connectedKeys) {
-    const edge = meta.edgeMap.get(key);
-    if (!edge) continue;
-    const fromNode = ir.nodes.find(n => n.id === edge.from);
-    const toNode   = ir.nodes.find(n => n.id === edge.to);
-    if (!fromNode || !toNode) continue;
+  // Batch: compute distributed side-aware curves for all edges touching the
+  // dragged node in one pass. With multiple edges hitting the same pivot side
+  // this spreads them along the side instead of stacking on the midpoint.
+  const edgeEntries = connectedKeys
+    .map(k => ({ key: k, edge: meta.edgeMap.get(k) }))
+    .filter((e): e is { key: string; edge: IREdge } => !!e.edge);
+  const nodesById = new Map(ir.nodes.map(n => [n.id, n]));
+  const curves = buildSideAwareCurvesForNode(
+    node,
+    edgeEntries.map(e => ({ from: e.edge.from, to: e.edge.to, ref: e.key })),
+    nodesById,
+  );
 
-    const sx = fromNode.x ?? 0;
-    const sy = fromNode.y ?? 0;
-    const tx = toNode.x   ?? 0;
-    const ty = toNode.y   ?? 0;
-    const pts = [{ x: sx, y: sy }, { x: tx, y: ty }];
+  for (const { key } of edgeEntries) {
+    const pts = curves.get(key);
+    if (!pts) continue;
     meta.displayPoints.set(key, pts);
+    meta.displayMode.set(key, 'curve');
 
+    const dStr = edgeCurvePath(pts);
     const pathEl = mountEl.querySelector(`[data-edge-key="${key}"] .edge-path`) as SVGPathElement | null;
     if (pathEl) {
-      pathEl.setAttribute('d', `M ${sx} ${sy} L ${tx} ${ty}`);
+      pathEl.setAttribute('d', dStr);
       pathEl.setAttribute('stroke-dasharray', '4,4');
       pathEl.setAttribute('stroke', '#888');
     }
     const hitEl = mountEl.querySelector(`[data-edge-key="${key}"] .edge-hit-area`) as SVGPathElement | null;
-    if (hitEl) hitEl.setAttribute('d', `M ${sx} ${sy} L ${tx} ${ty}`);
+    if (hitEl) hitEl.setAttribute('d', dStr);
 
     // Hide arrow + label during drag
     const arrowEl = mountEl.querySelector(`[data-edge-key="${key}"] .edge-arrow-line`) as SVGLineElement | null;
@@ -626,7 +956,7 @@ export function restoreEdgeStyle(
 
     const pathEl = mountEl.querySelector(`[data-edge-key="${key}"] .edge-path`) as SVGPathElement | null;
     if (pathEl) {
-      pathEl.setAttribute('stroke', '#555');
+      pathEl.setAttribute('stroke', '#333333');
       if (edge.style === 'dotted') pathEl.setAttribute('stroke-dasharray', '5,5');
       else pathEl.removeAttribute('stroke-dasharray');
     }
@@ -637,10 +967,11 @@ export function restoreEdgeStyle(
     const pts = meta.displayPoints.get(key);
     if (pts && pts.length > 0) {
       const mid = pts[Math.floor(pts.length / 2)];
+      const labelW = (edge.label?.length ?? 0) * 7 + 8;
       const bgEl = mountEl.querySelector(`[data-edge-key="${key}"] .edge-label-bg`) as SVGElement | null;
       if (bgEl) {
         bgEl.removeAttribute('display');
-        bgEl.setAttribute('x', String(mid.x - 20));
+        bgEl.setAttribute('x', String(mid.x - labelW / 2));
         bgEl.setAttribute('y', String(mid.y - 20));
       }
       const textEl = mountEl.querySelector(`[data-edge-key="${key}"] .edge-label-text`) as SVGElement | null;
@@ -691,7 +1022,7 @@ export function refreshEdgesFromLayout(mountEl: SVGElement): void {
     const pathEl = mountEl.querySelector(`[data-edge-key="${key}"] .edge-path`) as SVGPathElement | null;
     if (pathEl) {
       pathEl.setAttribute('d', edgePathString(ep));
-      pathEl.setAttribute('stroke', '#555');
+      pathEl.setAttribute('stroke', '#333333');
       if (e.style === 'dotted') pathEl.setAttribute('stroke-dasharray', '5,5');
       else pathEl.removeAttribute('stroke-dasharray');
     }
@@ -702,10 +1033,11 @@ export function refreshEdgesFromLayout(mountEl: SVGElement): void {
     if (arrowEl) { arrowEl.removeAttribute('display'); updateArrowLine(arrowEl, pts); }
 
     const mid = pts[Math.floor(pts.length / 2)];
+    const labelW = (e.label?.length ?? 0) * 7 + 8;
     const bgEl = mountEl.querySelector(`[data-edge-key="${key}"] .edge-label-bg`) as SVGElement | null;
     if (bgEl) {
       bgEl.removeAttribute('display');
-      bgEl.setAttribute('x', String(mid.x - 20));
+      bgEl.setAttribute('x', String(mid.x - labelW / 2));
       bgEl.setAttribute('y', String(mid.y - 20));
     }
     const textEl = mountEl.querySelector(`[data-edge-key="${key}"] .edge-label-text`) as SVGElement | null;
