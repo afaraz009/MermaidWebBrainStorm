@@ -131,13 +131,30 @@ function toggleAstar(): void {
   const btn = document.getElementById('toggleAstar');
   if (astarSettings.enabled) {
     if (btn) { btn.textContent = 'Hide A* Feature'; btn.classList.add('on'); }
+    // Re-run dagre so node sizes/positions snap to the current cellSize
+    // (layout.ts only snaps when astarSettings.enabled is true). Without
+    // this, A* would route against an un-snapped layout and the grid cells
+    // would not align with node borders.
+    layout(currentEff);
     routeAllEffWithCurrentSeparation();
   } else {
     if (btn) { btn.textContent = 'Show A* Feature'; btn.classList.remove('on'); }
     for (const edge of currentEff.edges) delete edge.routedPath;
     for (const edge of ir.edges)         delete edge.routedPath;
-    layout(currentEff);
+    // Restore the appropriate non-A* geometry for the current edgeMode:
+    //   • 'dagre'      — re-run dagre so edges get fresh originalPoints.
+    //   • 'side-aware' — keep whatever originalPoints are already cached
+    //                    (raw dagre from initial load OR side-aware curves
+    //                    stamped onto originalPoints by previous drops).
+    //                    Re-running layout here would wipe those stamped
+    //                    curves and snap node sizes/positions away from
+    //                    where the user left them.
+    if (astarSettings.edgeMode === 'dagre') {
+      layout(currentEff);
+    }
   }
+  // The Edges button is interactive only while A* is off.
+  syncEdgeModeBtnDisabled();
   renderFull(currentEff, svg, true, ir);
   reattach();
   if (overlayWasShown) renderGridOverlay(svg, currentEff);
@@ -231,6 +248,11 @@ function labelForEdgeMode(m: EdgeMode): string {
   return m === 'side-aware' ? 'Edges: Side-aware' : 'Edges: Dagre';
 }
 function applyEdgeMode(): void {
+  // While A* is on, A*'s routedPath overrides edgeMode at render time and the
+  // drop path short-circuits to A* before reading edgeMode. Re-running layout
+  // and redrawing here would be wasted work. The setting is still mutated so
+  // the user's preference takes effect the moment A* turns off.
+  if (astarSettings.enabled) return;
   const overlayWasShown = isGridOverlayShown(svg);
   if (astarSettings.edgeMode === 'dagre') {
     layout(currentEff);
@@ -239,15 +261,55 @@ function applyEdgeMode(): void {
   reattach();
   if (overlayWasShown) renderGridOverlay(svg, currentEff);
 }
+// Sync the Edges button's interactive state with A*. While A* is on, the
+// button is visually disabled (still shows the current edgeMode label so the
+// user can see what it'd be set to) and clicks are blocked.
+function syncEdgeModeBtnDisabled(): void {
+  if (!edgeModeBtn) return;
+  const disabled = astarSettings.enabled;
+  (edgeModeBtn as HTMLButtonElement).disabled = disabled;
+  edgeModeBtn.style.opacity = disabled ? '0.5' : '';
+  edgeModeBtn.style.cursor = disabled ? 'not-allowed' : '';
+  edgeModeBtn.title = disabled
+    ? 'Edges strategy is overridden by A* while A* is on'
+    : '';
+}
 if (edgeModeBtn) {
   edgeModeBtn.textContent = labelForEdgeMode(astarSettings.edgeMode);
   edgeModeBtn.classList.toggle('on', astarSettings.edgeMode === 'dagre');
+  syncEdgeModeBtnDisabled();
   edgeModeBtn.addEventListener('click', () => {
+    if (astarSettings.enabled) return;
     astarSettings.edgeMode =
       astarSettings.edgeMode === 'side-aware' ? 'dagre' : 'side-aware';
     edgeModeBtn.textContent = labelForEdgeMode(astarSettings.edgeMode);
     edgeModeBtn.classList.toggle('on', astarSettings.edgeMode === 'dagre');
     applyEdgeMode();
+  });
+}
+
+// Debug toggle for `chooseEdgesToReverseForMermaidOrder`. Flipping it re-runs
+// layout so the subgraph ordering changes immediately. When off, you should
+// see raw @dagrejs/dagre ordering — earlier-declared subgraphs ranked above
+// later-declared ones on inter-cluster cycles, which is the OPPOSITE of
+// Mermaid's reference output on the fixture's T→M / O→Q cycle.
+const parityBtn = document.getElementById('toggleMermaidParity');
+function labelForParity(on: boolean): string {
+  return on ? 'Mermaid parity: On' : 'Mermaid parity: Off';
+}
+if (parityBtn) {
+  parityBtn.textContent = labelForParity(astarSettings.mermaidParity);
+  parityBtn.classList.toggle('on', astarSettings.mermaidParity);
+  parityBtn.addEventListener('click', () => {
+    astarSettings.mermaidParity = !astarSettings.mermaidParity;
+    parityBtn.textContent = labelForParity(astarSettings.mermaidParity);
+    parityBtn.classList.toggle('on', astarSettings.mermaidParity);
+    // Re-run the full pipeline so layout picks up the new flag.
+    // Drop pinned positions so the parity change is visible on every node;
+    // otherwise drag-pinned nodes would stay put and mask the reordering.
+    ir.nodes.forEach(n => { n.pinned = false; delete n.x; delete n.y; });
+    ir.edges.forEach(e => { delete e.routedPath; delete e.originalPoints; delete e.points; });
+    rerenderWithCollapse();
   });
 }
 
@@ -285,7 +347,13 @@ if (cellSizeEl) {
     if (cellSizeValEl) cellSizeValEl.textContent = cellSizeEl.value;
   });
   // Apply on release so the grid doesn't re-route on every pixel of slider drag.
-  cellSizeEl.addEventListener('change', () => rerouteAll());
+  // When A* is on, re-run dagre first so node sizes/positions snap to the new
+  // cellSize — otherwise nodes keep their old grid-aligned dimensions and the
+  // new grid would no longer align with their borders.
+  cellSizeEl.addEventListener('change', () => {
+    if (astarSettings.enabled) layout(currentEff);
+    rerouteAll();
+  });
 }
 
 const connEl = document.getElementById('cfgConnectivity') as HTMLSelectElement | null;

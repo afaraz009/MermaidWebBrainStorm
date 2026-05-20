@@ -36,6 +36,12 @@ export interface AstarSettings {
   // Live edge-rendering strategy. Derived from `enabled` for backwards
   // compatibility on first load; user can change via the "Edges:" button.
   edgeMode: EdgeMode;
+  // Debug toggle. When true, `chooseEdgesToReverseForMermaidOrder` runs and
+  // dagre's input edges are reversed on inter-cluster cycles so subgraph
+  // ranking matches Mermaid's reference output. When false, raw
+  // `@dagrejs/dagre` ordering is used — useful for seeing what the parity fix
+  // actually corrects. Toggle via the "Mermaid parity" button.
+  mermaidParity: boolean;
 }
 
 export const astarSettings: AstarSettings = {
@@ -48,9 +54,10 @@ export const astarSettings: AstarSettings = {
   connectivity: 4,
   cornerCut: false,
   heuristic: 'manhattan',
-  enabled: true,
+  enabled: false,
   separation: 'off',
   edgeMode: 'side-aware',
+  mermaidParity: true,
 };
 
 // A snapshot of the cells A* touched on its most recent invocation. Used by

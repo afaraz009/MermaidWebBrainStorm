@@ -62,7 +62,9 @@ export function attachDrag(svg: SVGSVGElement, ir: IR, mountEl: SVGElement): () 
     // Snap the dropped node so its left/top edge lands on a grid line.
     // Sub-cell drag offsets are absorbed here so the post-drop routing sees a
     // perfectly cell-aligned node — no quantization mismatches between drops.
-    if (node && node.width != null && node.height != null) {
+    // Only meaningful when A* is on; with A* off the grid is invisible and
+    // snapping would just jerk the node away from where it was dropped.
+    if (astarSettings.enabled && node && node.width != null && node.height != null) {
       const cell = astarSettings.cellSize;
       const left = Math.round((node.x! - node.width / 2) / cell) * cell;
       const top  = Math.round((node.y! - node.height / 2) / cell) * cell;

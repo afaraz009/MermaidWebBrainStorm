@@ -136,16 +136,21 @@ export function layout(ir: IR): IR {
   });
   g.setDefaultEdgeLabel(() => ({}));
 
+  // Grid-snap node sizes/positions only when A* is on. When A* is off the
+  // grid is invisible and unused, so coupling layout to cellSize just makes
+  // the dagre output drift when the user changes the slider.
+  const snapToGrid = astarSettings.enabled;
   const cell = astarSettings.cellSize;
+  const snap = (v: number) => (snapToGrid ? ceilTo(v, cell) : v);
 
-  // Subgraph compound nodes — size also snapped to cellSize so subgraph
-  // boundaries align with grid lines. Insertion order matches IR declaration
-  // order (same as Mermaid).
+  // Subgraph compound nodes — size snapped to cellSize so subgraph
+  // boundaries align with grid lines (A* mode only). Insertion order matches
+  // IR declaration order (same as Mermaid).
   for (const sg of ir.subgraphs) {
     g.setNode(sg.id, {
       label: sg.label,
-      width: ceilTo(sg.label.length * 8 + 24, cell),
-      height: ceilTo(30, cell),
+      width: snap(sg.label.length * 8 + 24),
+      height: snap(30),
     });
   }
   for (const sg of ir.subgraphs) {
@@ -155,8 +160,8 @@ export function layout(ir: IR): IR {
   // Leaf nodes in IR declaration order.
   for (const n of ir.nodes) {
     const { w: rawW, h: rawH } = sizeForShape(n.shape, n.label.length);
-    const width = ceilTo(rawW, cell);
-    const height = ceilTo(rawH, cell);
+    const width = snap(rawW);
+    const height = snap(rawH);
     if (n.pinned && n.x != null && n.y != null) {
       g.setNode(n.id, { label: n.label, width, height, x: n.x, y: n.y });
     } else {
@@ -173,12 +178,19 @@ export function layout(ir: IR): IR {
   // reverse the edge in dagre's view so the later-declared cluster ranks
   // higher. The original direction is preserved for rendering via
   // `reversedEdges` — we swap the points back after dagre runs.
-  const reversedEdges = chooseEdgesToReverseForMermaidOrder(ir);
+  //
+  // Skipped when `astarSettings.mermaidParity` is false — useful as a debug
+  // toggle to see raw `@dagrejs/dagre` subgraph ordering side-by-side with
+  // the Mermaid-matched output.
+  const reversedEdges = astarSettings.mermaidParity
+    ? chooseEdgesToReverseForMermaidOrder(ir)
+    : new Set<import('./types.js').IREdge>();
 
   for (const e of ir.edges) {
-    if (reversedEdges.has(e)) {
-      g.setEdge(e.to, e.from, { label: e.label || '', weight: 1 });
-    } else {
+    // if (reversedEdges.has(e)) {
+    //   g.setEdge(e.to, e.from, { label: e.label || '', weight: 1 });
+    // } else
+       {
       g.setEdge(e.from, e.to, { label: e.label || '', weight: 1 });
     }
   }
@@ -194,21 +206,27 @@ export function layout(ir: IR): IR {
     fixBranchOrdering(g, ir);
   }
 
-  // Write positions back to IR nodes. After taking dagre's chosen position,
-  // snap each non-pinned node so its left edge falls on a cell line — i.e.
-  // round (x - width/2) to a multiple of cellSize and recompute x. This makes
-  // the node's outline land exactly on grid lines so the A* grid never has to
-  // mark a cell as "partially inside the node."
+  // Write positions back to IR nodes. When A* is on, snap each non-pinned
+  // node so its left edge falls on a cell line — round (x - width/2) to a
+  // multiple of cellSize and recompute x. This makes the node's outline land
+  // exactly on grid lines so the A* grid never has to mark a cell as
+  // "partially inside the node." With A* off, take dagre's chosen position
+  // verbatim so the cellSize slider doesn't perturb the layout.
   for (const n of ir.nodes) {
     const gn = g.node(n.id);
     if (!gn) continue;
     n.width = gn.width;
     n.height = gn.height;
     if (!n.pinned) {
-      const left = Math.round((gn.x - gn.width / 2) / cell) * cell;
-      const top  = Math.round((gn.y - gn.height / 2) / cell) * cell;
-      n.x = left + gn.width / 2;
-      n.y = top  + gn.height / 2;
+      if (snapToGrid) {
+        const left = Math.round((gn.x - gn.width / 2) / cell) * cell;
+        const top  = Math.round((gn.y - gn.height / 2) / cell) * cell;
+        n.x = left + gn.width / 2;
+        n.y = top  + gn.height / 2;
+      } else {
+        n.x = gn.x;
+        n.y = gn.y;
+      }
     }
   }
 
