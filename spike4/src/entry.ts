@@ -4,7 +4,9 @@ import { renderFull } from './renderer.js';
 import { attachDrag } from './drag.js';
 import { renderGridOverlay, clearGridOverlay, isGridOverlayShown } from './gridOverlay.js';
 import { routeEdge, routeEdgesBatch } from './routing.js';
-import { astarSettings, type HeuristicName, type Connectivity, type EdgeSeparation, type EdgeMode } from './astarSettings.js';
+import { astarSettings, type HeuristicName, type Connectivity, type EdgeSeparation } from './astarSettings.js';
+import { edgeSettings, type EdgeMode } from './edgeSettings.js';
+import { layoutSettings } from './layoutSettings.js';
 import { deriveEffectiveIR, isSurrogateId } from './effective-ir.js';
 import { attachCollapseHandlers } from './collapse.js';
 import { attachPan, getPan, getZoom, setZoom, setPan } from './pan.js';
@@ -149,7 +151,7 @@ function toggleAstar(): void {
     //                    Re-running layout here would wipe those stamped
     //                    curves and snap node sizes/positions away from
     //                    where the user left them.
-    if (astarSettings.edgeMode === 'dagre') {
+    if (edgeSettings.edgeMode === 'dagre') {
       layout(currentEff);
     }
   }
@@ -254,7 +256,7 @@ function applyEdgeMode(): void {
   // the user's preference takes effect the moment A* turns off.
   if (astarSettings.enabled) return;
   const overlayWasShown = isGridOverlayShown(svg);
-  if (astarSettings.edgeMode === 'dagre') {
+  if (edgeSettings.edgeMode === 'dagre') {
     layout(currentEff);
   }
   renderFull(currentEff, svg, true, ir);
@@ -275,15 +277,15 @@ function syncEdgeModeBtnDisabled(): void {
     : '';
 }
 if (edgeModeBtn) {
-  edgeModeBtn.textContent = labelForEdgeMode(astarSettings.edgeMode);
-  edgeModeBtn.classList.toggle('on', astarSettings.edgeMode === 'dagre');
+  edgeModeBtn.textContent = labelForEdgeMode(edgeSettings.edgeMode);
+  edgeModeBtn.classList.toggle('on', edgeSettings.edgeMode === 'dagre');
   syncEdgeModeBtnDisabled();
   edgeModeBtn.addEventListener('click', () => {
     if (astarSettings.enabled) return;
-    astarSettings.edgeMode =
-      astarSettings.edgeMode === 'side-aware' ? 'dagre' : 'side-aware';
-    edgeModeBtn.textContent = labelForEdgeMode(astarSettings.edgeMode);
-    edgeModeBtn.classList.toggle('on', astarSettings.edgeMode === 'dagre');
+    edgeSettings.edgeMode =
+      edgeSettings.edgeMode === 'side-aware' ? 'dagre' : 'side-aware';
+    edgeModeBtn.textContent = labelForEdgeMode(edgeSettings.edgeMode);
+    edgeModeBtn.classList.toggle('on', edgeSettings.edgeMode === 'dagre');
     applyEdgeMode();
   });
 }
@@ -298,12 +300,12 @@ function labelForParity(on: boolean): string {
   return on ? 'Mermaid parity: On' : 'Mermaid parity: Off';
 }
 if (parityBtn) {
-  parityBtn.textContent = labelForParity(astarSettings.mermaidParity);
-  parityBtn.classList.toggle('on', astarSettings.mermaidParity);
+  parityBtn.textContent = labelForParity(layoutSettings.mermaidParity);
+  parityBtn.classList.toggle('on', layoutSettings.mermaidParity);
   parityBtn.addEventListener('click', () => {
-    astarSettings.mermaidParity = !astarSettings.mermaidParity;
-    parityBtn.textContent = labelForParity(astarSettings.mermaidParity);
-    parityBtn.classList.toggle('on', astarSettings.mermaidParity);
+    layoutSettings.mermaidParity = !layoutSettings.mermaidParity;
+    parityBtn.textContent = labelForParity(layoutSettings.mermaidParity);
+    parityBtn.classList.toggle('on', layoutSettings.mermaidParity);
     // Re-run the full pipeline so layout picks up the new flag.
     // Drop pinned positions so the parity change is visible on every node;
     // otherwise drag-pinned nodes would stay put and mask the reordering.

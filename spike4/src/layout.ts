@@ -2,6 +2,7 @@ import { graphlib, layout as dagreLayout } from '@dagrejs/dagre';
 import type { IR, NodeShape } from './types.js';
 import { clipToBorder } from './border.js';
 import { astarSettings } from './astarSettings.js';
+import { layoutSettings } from './layoutSettings.js';
 
 // Round up to a multiple of `step`. Used to size nodes and snap positions to
 // the A* grid so every node boundary lands on a cell line.
@@ -182,15 +183,14 @@ export function layout(ir: IR): IR {
   // Skipped when `astarSettings.mermaidParity` is false — useful as a debug
   // toggle to see raw `@dagrejs/dagre` subgraph ordering side-by-side with
   // the Mermaid-matched output.
-  const reversedEdges = astarSettings.mermaidParity
+  const reversedEdges = layoutSettings.mermaidParity
     ? chooseEdgesToReverseForMermaidOrder(ir)
     : new Set<import('./types.js').IREdge>();
 
   for (const e of ir.edges) {
-    // if (reversedEdges.has(e)) {
-    //   g.setEdge(e.to, e.from, { label: e.label || '', weight: 1 });
-    // } else
-       {
+    if (reversedEdges.has(e)) {
+      g.setEdge(e.to, e.from, { label: e.label || '', weight: 1 });
+    } else {
       g.setEdge(e.from, e.to, { label: e.label || '', weight: 1 });
     }
   }

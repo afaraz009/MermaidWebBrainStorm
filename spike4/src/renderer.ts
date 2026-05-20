@@ -11,6 +11,7 @@ import {
 } from './border.js';
 import { isSurrogateId, sgIdFromSurrogate, countHiddenDescendants } from './effective-ir.js';
 import { astarSettings } from './astarSettings.js';
+import { edgeSettings } from './edgeSettings.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const PADDING = 20;
@@ -842,7 +843,7 @@ export function updateNodePosition(
   // strategies live without a layout reset.
   //   • 'side-aware' / 'astar' — distributed side-aware curves (current).
   //   • 'dagre'                — pre-76420cd straight center-to-center line.
-  if (astarSettings.edgeMode === 'dagre') {
+  if (edgeSettings.edgeMode === 'dagre') {
     for (const { key, edge } of edgeEntries) {
       const fromNode = ir.nodes.find(n => n.id === edge.from);
       const toNode   = ir.nodes.find(n => n.id === edge.to);

@@ -6,6 +6,7 @@ import {
 import { routeEdgesBatch, DEFAULT_CONFIG } from './routing.js';
 import { renderGridOverlay, isGridOverlayShown } from './gridOverlay.js';
 import { astarSettings } from './astarSettings.js';
+import { edgeSettings } from './edgeSettings.js';
 import { layout } from './layout.js';
 import type { IR } from './types.js';
 
@@ -89,7 +90,7 @@ export function attachDrag(svg: SVGSVGElement, ir: IR, mountEl: SVGElement): () 
     //                    back-edges — that's the point of this mode.
     if (astarSettings.enabled) {
       routeEdgesBatch(ir.edges, ir, DEFAULT_CONFIG, astarSettings.separation);
-    } else if (astarSettings.edgeMode === 'side-aware') {
+    } else if (edgeSettings.edgeMode === 'side-aware') {
       const droppedNode = node;
       if (droppedNode) {
         const connectedEdges = ir.edges.filter(e => e.from === droppedId || e.to === droppedId);
