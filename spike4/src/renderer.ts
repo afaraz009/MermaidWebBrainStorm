@@ -10,6 +10,7 @@ import {
   asymmetricVerts,
 } from './border.js';
 import { isSurrogateId, sgIdFromSurrogate, countHiddenDescendants } from './effective-ir.js';
+import { astarSettings } from './astarSettings.js';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const PADDING = 20;
@@ -451,82 +452,13 @@ export function buildSideAwareCurvesForNode(
       const peerAnchor = clipToBorder(items[i].peer, peerVirtual);
       const pivotStub = stubFromSide(side,     pivotAnchor, stubDist);
       const peerStub  = stubFromSide(peerSide, peerAnchor,  stubDist);
-      // Mermaid-style intermediate waypoints between the two stubs. This
-      // produces the gentle multi-segment swept curve that matches the
-      // reference renderer, without the visible "straight diagonal" that
-      // the 4-point setup gives when nodes are far apart.
-      const mid = midWaypoints(side, peerSide, pivotStub, peerStub);
       const pts = items[i].isOutgoing
-        ? [pivotAnchor, pivotStub, ...mid, peerStub, peerAnchor]
-        : [peerAnchor,  peerStub,  ...mid.slice().reverse(), pivotStub, pivotAnchor];
+        ? [pivotAnchor, pivotStub, peerStub, peerAnchor]
+        : [peerAnchor,  peerStub,  pivotStub, pivotAnchor];
       out.set(items[i].ref, pts);
     }
   }
   return out;
-}
-
-// Manhattan-elbow waypoints between two stubs to produce the multi-segment
-// swept curve that visually matches Mermaid's reference output. The returned
-// points sit between the source stub and the target stub (exclusive) — the
-// caller chains them with [anchor, sourceStub, ...mid, targetStub, anchor].
-//
-// Layout rules:
-//   • Same-axis facing (top↔bottom, or left↔right): a single midpoint placed
-//     on the midline between the two stubs. curveBasis turns this into an
-//     S-bend with the right tangent at both ends.
-//   • Opposite axes (vertical ↔ horizontal): an L-shaped elbow whose corner
-//     sits at (peerStub.x, pivotStub.y) or (pivotStub.x, peerStub.y) — picked
-//     so the corner is on the OUTSIDE of both nodes (further from either
-//     center), giving the gentle wrap-around Mermaid edges have.
-//   • Far apart (long horizontal/vertical run): split the midline into TWO
-//     midpoints (early and late) so the basis interpolation doesn't degrade
-//     into a near-straight diagonal — this preserves the swept look on
-//     edges that span the whole canvas.
-function midWaypoints(
-  sourceSide: Side,
-  targetSide: Side,
-  sourceStub: { x: number; y: number },
-  targetStub: { x: number; y: number },
-): { x: number; y: number }[] {
-  const sourceVertical = sourceSide === 'top' || sourceSide === 'bottom';
-  const targetVertical = targetSide === 'top' || targetSide === 'bottom';
-  const dx = targetStub.x - sourceStub.x;
-  const dy = targetStub.y - sourceStub.y;
-
-  if (sourceVertical && targetVertical) {
-    // Both stubs face vertically. Route via a horizontal segment at the
-    // midline between the two stub Y values. For long runs, use two midpoints
-    // so the curve has body instead of degenerating to a straight diagonal.
-    const midY = (sourceStub.y + targetStub.y) / 2;
-    if (Math.abs(dx) > 200) {
-      return [
-        { x: sourceStub.x, y: midY },
-        { x: targetStub.x, y: midY },
-      ];
-    }
-    return [{ x: (sourceStub.x + targetStub.x) / 2, y: midY }];
-  }
-
-  if (!sourceVertical && !targetVertical) {
-    // Both stubs face horizontally — symmetric to the vertical case.
-    const midX = (sourceStub.x + targetStub.x) / 2;
-    if (Math.abs(dy) > 200) {
-      return [
-        { x: midX, y: sourceStub.y },
-        { x: midX, y: targetStub.y },
-      ];
-    }
-    return [{ x: midX, y: (sourceStub.y + targetStub.y) / 2 }];
-  }
-
-  // Mixed orientation: L-elbow at the corner where the two stub directions
-  // meet. If source is vertical, the elbow sits at (target.x, source.y) —
-  // the source can travel vertically to that corner and the target can
-  // enter horizontally from there. Reversed for the other case.
-  if (sourceVertical) {
-    return [{ x: targetStub.x, y: sourceStub.y }];
-  }
-  return [{ x: sourceStub.x, y: targetStub.y }];
 }
 
 // Short stub from `anchor` along the outward direction (anchor - center).
@@ -595,12 +527,14 @@ export function updateArrowLine(lineEl: SVGLineElement, pts: { x: number; y: num
   lineEl.setAttribute('y2', String(last.y));
 }
 
-// Pick the points used for initial render: prefer A*-routed waypoints if the
-// edge has been re-routed (straight polylines), else dagre's originalPoints
-// rendered with curveBasis to match Mermaid's default `basis` interpolation.
+// Pick the points used for initial render. A* (when enabled) always wins —
+// it produces a routed straight polyline. Otherwise fall back to dagre's
+// originalPoints rendered with curveBasis; those points may already be the
+// side-aware curves stamped on by the drop handler when edgeMode is
+// 'side-aware', so this works for both 'side-aware' and 'dagre' modes.
 type EdgePoints = { pts: { x: number; y: number }[]; mode: 'curve' | 'straight' };
 function initialEdgePoints(e: IREdge): EdgePoints | undefined {
-  if (e.routedPath && e.routedPath.length >= 2) {
+  if (astarSettings.enabled && e.routedPath && e.routedPath.length >= 2) {
     return { pts: e.routedPath.map(p => ({ ...p })), mode: 'straight' };
   }
   if (e.originalPoints && e.originalPoints.length > 0) {
@@ -900,12 +834,44 @@ export function updateNodePosition(
   if (!meta) return;
 
   const connectedKeys = meta.adjacency.get(nodeId) || [];
-  // Batch: compute distributed side-aware curves for all edges touching the
-  // dragged node in one pass. With multiple edges hitting the same pivot side
-  // this spreads them along the side instead of stacking on the midpoint.
   const edgeEntries = connectedKeys
     .map(k => ({ key: k, edge: meta.edgeMap.get(k) }))
     .filter((e): e is { key: string; edge: IREdge } => !!e.edge);
+
+  // Drag preview is branched by edgeMode so we can compare the three
+  // strategies live without a layout reset.
+  //   • 'side-aware' / 'astar' — distributed side-aware curves (current).
+  //   • 'dagre'                — pre-76420cd straight center-to-center line.
+  if (astarSettings.edgeMode === 'dagre') {
+    for (const { key, edge } of edgeEntries) {
+      const fromNode = ir.nodes.find(n => n.id === edge.from);
+      const toNode   = ir.nodes.find(n => n.id === edge.to);
+      if (!fromNode || !toNode) continue;
+      const sx = fromNode.x ?? 0;
+      const sy = fromNode.y ?? 0;
+      const tx = toNode.x   ?? 0;
+      const ty = toNode.y   ?? 0;
+      const pts = [{ x: sx, y: sy }, { x: tx, y: ty }];
+      meta.displayPoints.set(key, pts);
+      meta.displayMode.set(key, 'straight');
+      const dStr = `M ${sx} ${sy} L ${tx} ${ty}`;
+      const pathEl = mountEl.querySelector(`[data-edge-key="${key}"] .edge-path`) as SVGPathElement | null;
+      if (pathEl) {
+        pathEl.setAttribute('d', dStr);
+        pathEl.setAttribute('stroke-dasharray', '4,4');
+        pathEl.setAttribute('stroke', '#888');
+      }
+      const hitEl = mountEl.querySelector(`[data-edge-key="${key}"] .edge-hit-area`) as SVGPathElement | null;
+      if (hitEl) hitEl.setAttribute('d', dStr);
+      hideEdgeOverlays(mountEl, key);
+    }
+    updateSubgraphRects(meta);
+    return;
+  }
+
+  // Side-aware / A* drag preview — distributed curves with Manhattan
+  // midpoints. Computed in one pass so parallel edges on the same pivot side
+  // fan out instead of stacking.
   const nodesById = new Map(ir.nodes.map(n => [n.id, n]));
   const curves = buildSideAwareCurvesForNode(
     node,
@@ -929,16 +895,20 @@ export function updateNodePosition(
     const hitEl = mountEl.querySelector(`[data-edge-key="${key}"] .edge-hit-area`) as SVGPathElement | null;
     if (hitEl) hitEl.setAttribute('d', dStr);
 
-    // Hide arrow + label during drag
-    const arrowEl = mountEl.querySelector(`[data-edge-key="${key}"] .edge-arrow-line`) as SVGLineElement | null;
-    if (arrowEl) arrowEl.setAttribute('display', 'none');
-    const bgEl = mountEl.querySelector(`[data-edge-key="${key}"] .edge-label-bg`) as SVGElement | null;
-    if (bgEl) bgEl.setAttribute('display', 'none');
-    const textEl = mountEl.querySelector(`[data-edge-key="${key}"] .edge-label-text`) as SVGElement | null;
-    if (textEl) textEl.setAttribute('display', 'none');
+    hideEdgeOverlays(mountEl, key);
   }
 
   updateSubgraphRects(meta);
+}
+
+// Hide arrow + label while an edge is being previewed during drag.
+function hideEdgeOverlays(mountEl: SVGElement, key: string): void {
+  const arrowEl = mountEl.querySelector(`[data-edge-key="${key}"] .edge-arrow-line`) as SVGLineElement | null;
+  if (arrowEl) arrowEl.setAttribute('display', 'none');
+  const bgEl = mountEl.querySelector(`[data-edge-key="${key}"] .edge-label-bg`) as SVGElement | null;
+  if (bgEl) bgEl.setAttribute('display', 'none');
+  const textEl = mountEl.querySelector(`[data-edge-key="${key}"] .edge-label-text`) as SVGElement | null;
+  if (textEl) textEl.setAttribute('display', 'none');
 }
 
 // Restore curved style on the given edges (called after A* re-route writes

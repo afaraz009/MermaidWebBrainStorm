@@ -4,7 +4,7 @@ import { renderFull } from './renderer.js';
 import { attachDrag } from './drag.js';
 import { renderGridOverlay, clearGridOverlay, isGridOverlayShown } from './gridOverlay.js';
 import { routeEdge, routeEdgesBatch } from './routing.js';
-import { astarSettings, type HeuristicName, type Connectivity, type EdgeSeparation } from './astarSettings.js';
+import { astarSettings, type HeuristicName, type Connectivity, type EdgeSeparation, type EdgeMode } from './astarSettings.js';
 import { deriveEffectiveIR, isSurrogateId } from './effective-ir.js';
 import { attachCollapseHandlers } from './collapse.js';
 import { attachPan, getPan, getZoom, setZoom, setPan } from './pan.js';
@@ -216,6 +216,38 @@ if (sepBtn) {
     renderFull(currentEff, svg, true, ir);
     reattach();
     if (overlayWasShown) renderGridOverlay(svg, currentEff);
+  });
+}
+
+// Toggle the non-A* edge strategy in real time. Orthogonal to A*:
+// the A* button continues to control routing independently. When edgeMode
+// switches to 'dagre' we re-run layout to overwrite any side-aware curves
+// stamped onto originalPoints by a previous drop; 'side-aware' simply keeps
+// whatever originalPoints exist (raw dagre or stamped side-aware curves).
+// Reuses the same redraw path as toggleAstar so pinned positions, collapse
+// state, pan/zoom, and grid overlay persist across switches.
+const edgeModeBtn = document.getElementById('toggleEdgeMode');
+function labelForEdgeMode(m: EdgeMode): string {
+  return m === 'side-aware' ? 'Edges: Side-aware' : 'Edges: Dagre';
+}
+function applyEdgeMode(): void {
+  const overlayWasShown = isGridOverlayShown(svg);
+  if (astarSettings.edgeMode === 'dagre') {
+    layout(currentEff);
+  }
+  renderFull(currentEff, svg, true, ir);
+  reattach();
+  if (overlayWasShown) renderGridOverlay(svg, currentEff);
+}
+if (edgeModeBtn) {
+  edgeModeBtn.textContent = labelForEdgeMode(astarSettings.edgeMode);
+  edgeModeBtn.classList.toggle('on', astarSettings.edgeMode === 'dagre');
+  edgeModeBtn.addEventListener('click', () => {
+    astarSettings.edgeMode =
+      astarSettings.edgeMode === 'side-aware' ? 'dagre' : 'side-aware';
+    edgeModeBtn.textContent = labelForEdgeMode(astarSettings.edgeMode);
+    edgeModeBtn.classList.toggle('on', astarSettings.edgeMode === 'dagre');
+    applyEdgeMode();
   });
 }
 

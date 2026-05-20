@@ -6,6 +6,7 @@ import {
 import { routeEdgesBatch, DEFAULT_CONFIG } from './routing.js';
 import { renderGridOverlay, isGridOverlayShown } from './gridOverlay.js';
 import { astarSettings } from './astarSettings.js';
+import { layout } from './layout.js';
 import type { IR } from './types.js';
 
 export function attachDrag(svg: SVGSVGElement, ir: IR, mountEl: SVGElement): () => void {
@@ -76,26 +77,17 @@ export function attachDrag(svg: SVGSVGElement, ir: IR, mountEl: SVGElement): () 
       }
     }
 
-    // A*-route every edge in the graph using the active separation mode so a
-    // single drop produces a self-consistent picture. We can't route only the
-    // dropped node's edges: with separation = 'soft'/'hard', the cost/block
-    // buffer needs every edge's cells in scope, otherwise the dragged edges
-    // would ignore the long-running edges they should be avoiding (and would
-    // revert to "default A* style" overlapping at the dock). Cheap enough on
-    // realistic fixtures — same path the toggle and collapse handlers use.
-    //
-    // When the A* feature is toggled off, we skip re-routing entirely so the
-    // edge falls back to dagre's curved `originalPoints` on the next redraw.
+    // Drop-time edge geometry. A* runs whenever it's enabled (takes
+    // precedence over edgeMode). Otherwise:
+    //   • 'side-aware' — persist the distributed side-aware curves drawn live
+    //                    so the visible edge doesn't jump on mouseup.
+    //   • 'dagre'      — pre-76420cd behaviour: clear cached overrides and
+    //                    re-run dagre so connected edges get fresh original
+    //                    points for the new geometry. May visibly fold on
+    //                    back-edges — that's the point of this mode.
     if (astarSettings.enabled) {
       routeEdgesBatch(ir.edges, ir, DEFAULT_CONFIG, astarSettings.separation);
-    } else {
-      // A* is off — DON'T re-run dagre. A full re-layout would discard the
-      // side-aware geometry the drag established and replay edge points from
-      // dagre's rank-based routing, which is what produced the original fold
-      // bug. Instead, persist the same distributed side-aware curves we drew
-      // live during the drag, so the visible edge doesn't jump on mouseup
-      // and parallel edges stay spread along the node side instead of
-      // stacking on the midpoint.
+    } else if (astarSettings.edgeMode === 'side-aware') {
       const droppedNode = node;
       if (droppedNode) {
         const connectedEdges = ir.edges.filter(e => e.from === droppedId || e.to === droppedId);
@@ -113,6 +105,10 @@ export function attachDrag(svg: SVGSVGElement, ir: IR, mountEl: SVGElement): () 
           edge.points = pts.map(p => ({ ...p }));
         }
       }
+    } else {
+      // 'dagre'
+      for (const edge of ir.edges) delete edge.routedPath;
+      layout(ir);
     }
 
     refreshEdgesFromLayout(mountEl);
