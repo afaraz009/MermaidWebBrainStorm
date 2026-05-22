@@ -1,0 +1,69 @@
+- generic [ref=e1]:
+  - heading "Spike 3 — Click anywhere on a subgraph to collapse; click the surrogate to expand. Drag still works on nodes." [level=2] [ref=e2]
+  - generic [ref=e3]:
+    - button "Reset Layout" [ref=e4] [cursor=pointer]
+    - button "Collapse All" [active] [ref=e5] [cursor=pointer]
+    - button "Expand All" [ref=e6] [cursor=pointer]
+    - button "Show A* Grid" [ref=e7] [cursor=pointer]
+    - button "Hide A* Feature" [ref=e8] [cursor=pointer]
+    - 'button "Separation: Hard" [ref=e2585] [cursor=pointer]'
+  - generic [ref=e10]:
+    - generic [ref=e11]:
+      - text: Cell size
+      - slider "Cell size 10 px" [ref=e12]: "10"
+      - generic [ref=e13]: "10"
+      - text: px
+    - generic [ref=e14]:
+      - text: Connectivity
+      - combobox "Connectivity" [ref=e15]:
+        - option "4-way" [selected]
+        - option "8-way"
+    - generic [ref=e16]:
+      - text: Corner cutting
+      - combobox "Corner cutting" [ref=e17]:
+        - option "Blocked" [selected]
+        - option "Allowed"
+    - generic [ref=e18]:
+      - text: Heuristic
+      - combobox "Heuristic" [ref=e19]:
+        - option "Manhattan" [selected]
+        - option "Octile"
+        - option "Euclidean"
+        - option "Chebyshev"
+        - option "Zero (Dijkstra)"
+    - generic [ref=e20]:
+      - generic [ref=e21]: obstacle
+      - generic [ref=e23]: closed
+      - generic [ref=e25]: open
+  - img [ref=e27]:
+    - generic [ref=e5046]: sync
+    - generic [ref=e5047]:
+      - generic [ref=e5050]: Client App
+      - generic [ref=e5053]: Edge Gateway
+      - generic [ref=e5054]:
+        - generic [ref=e5057]: Web
+        - generic [ref=e5058]: (23)
+      - generic [ref=e5059]:
+        - generic [ref=e5062]: Mobile
+        - generic [ref=e5063]: (24)
+      - generic [ref=e5064]:
+        - generic [ref=e5067]: Cart
+        - generic [ref=e5068]: (12)
+      - generic [ref=e5069]:
+        - generic [ref=e5072]: Checkout
+        - generic [ref=e5073]: (12)
+      - generic [ref=e5074]:
+        - generic [ref=e5077]: Payments
+        - generic [ref=e5078]: (23)
+      - generic [ref=e5079]:
+        - generic [ref=e5082]: Inventory
+        - generic [ref=e5083]: (24)
+      - generic [ref=e5084]:
+        - generic [ref=e5087]: Shipping
+        - generic [ref=e5088]: (24)
+      - generic [ref=e5089]:
+        - generic [ref=e5092]: Notifications
+        - generic [ref=e5093]: (23)
+      - generic [ref=e5094]:
+        - generic [ref=e5097]: Analytics
+        - generic [ref=e5098]: (24)

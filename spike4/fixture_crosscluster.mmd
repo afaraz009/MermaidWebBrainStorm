@@ -1,0 +1,67 @@
+flowchart TD
+
+    %% =========================
+    %% Cross-cluster edge & label stress fixture
+    %% Goal: many long cross-cluster edges with labels, so we can
+    %% visually compare label positioning against Mermaid's reference.
+    %% Mermaid places labels at the routing midpoint of the *outer*
+    %% segment; ours places them at the geometric midpoint of the full
+    %% polyline. Long cross-cluster edges make the difference visible.
+    %% =========================
+
+    Start([Request]) --> Gateway
+
+    subgraph Frontend [Frontend Cluster]
+        Gateway[API Gateway]
+        AuthCheck{Auth?}
+        RateLimit[/Rate Limit/]
+        Cache[(Response Cache)]
+        Gateway --> AuthCheck
+        AuthCheck -->|yes| RateLimit
+        RateLimit --> Cache
+    end
+
+    subgraph Services [Service Cluster]
+        OrderSvc[Order Service]
+        UserSvc[User Service]
+        InventorySvc[Inventory Service]
+        PricingSvc[Pricing Service]
+        OrderSvc --> UserSvc
+        OrderSvc --> InventorySvc
+        OrderSvc --> PricingSvc
+    end
+
+    subgraph DataLayer [Data Layer]
+        OrderDB[(Orders DB)]
+        UserDB[(Users DB)]
+        InventoryDB[(Inventory DB)]
+        EventBus{{Event Bus}}
+    end
+
+    subgraph External [External Integrations]
+        StripeAPI[Stripe API]
+        EmailSvc[Email Provider]
+        AnalyticsSvc[Analytics]
+    end
+
+    %% Many long cross-cluster edges with labels — these are the
+    %% ones whose label placement we want to compare.
+    Cache -->|cache miss, fetch fresh order data| OrderSvc
+    Cache -->|cache miss, fetch user profile| UserSvc
+    AuthCheck -->|verify session token against user record| UserSvc
+
+    OrderSvc -->|persist new order record| OrderDB
+    OrderSvc -->|emit OrderCreated event to async consumers| EventBus
+    UserSvc -->|fetch user profile and preferences| UserDB
+    InventorySvc -->|decrement stock atomically| InventoryDB
+    PricingSvc -->|publish price-change events| EventBus
+
+    OrderSvc -->|charge customer via Stripe Connect| StripeAPI
+    OrderSvc -->|send order confirmation email| EmailSvc
+    EventBus -->|forward all events to analytics pipeline| AnalyticsSvc
+
+    %% A back-edge from data layer to frontend, label is intentionally long
+    EventBus -.->|invalidate stale cache entries on data change| Cache
+
+    %% Another back-edge spanning clusters
+    AnalyticsSvc -.->|surface anomaly alerts back to operators| Gateway

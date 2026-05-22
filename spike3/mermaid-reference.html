@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Mermaid Reference</title>
+  <style>
+    body { margin: 0; padding: 16px; font-family: sans-serif; background: #fff; }
+    h2 { margin: 0 0 12px; font-size: 14px; color: #666; }
+    .mermaid { max-width: 100%; }
+  </style>
+</head>
+<body>
+  <h2>Mermaid Reference (target)</h2>
+  <div id="diagram"></div>
+  <script type="module">
+    import mermaid from 'https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.esm.min.mjs';
+    mermaid.initialize({ startOnLoad: false, theme: 'default' });
+
+    const params = new URLSearchParams(window.location.search);
+    const fixture = params.get('fixture') || 'fixture.mmd';
+
+    fetch('./' + fixture)
+      .then(r => r.text())
+      .then(async src => {
+        const { svg } = await mermaid.render('mermaid-svg', src);
+        document.getElementById('diagram').innerHTML = svg;
+      });
+  </script>
+</body>
+</html>

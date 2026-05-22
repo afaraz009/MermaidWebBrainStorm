@@ -1,0 +1,21 @@
+{
+  "name": "spike3",
+  "version": "1.0.0",
+  "description": "Subgraph collapse / expand on top of A* edge routing",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build"
+  },
+  "type": "module",
+  "dependencies": {
+    "@dagrejs/dagre": "^3.0.0",
+    "d3-path": "^3.1.0",
+    "d3-shape": "^3.2.0",
+    "mermaid": "^11.14.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.6.2",
+    "typescript": "^6.0.3",
+    "vite": "^8.0.11"
+  }
+}

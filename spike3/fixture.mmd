@@ -1,0 +1,63 @@
+
+flowchart TD
+
+    %% =========================
+    %% Frontend Layer
+    %% =========================
+    subgraph FRONTEND["Frontend Layer"]
+        UI[User Interface]
+        COMP[React Components]
+        STATE[State Management]
+        ROUTE[Routing System]
+    end
+
+    %% =========================
+    %% Backend Layer
+    %% =========================
+    subgraph BACKEND["Backend Layer"]
+        API[REST API]
+        AUTH[Authentication]
+        LOGIC[Business Logic]
+        CACHE[Cache System]
+    end
+
+    %% =========================
+    %% Database Layer
+    %% =========================
+    subgraph DATABASE["Database Layer"]
+        SQL[(SQL Database)]
+        NOSQL[(NoSQL Database)]
+        STORAGE[(Cloud Storage)]
+    end
+
+    %% =========================
+    %% DevOps Layer
+    %% =========================
+    subgraph DEVOPS["DevOps & Deployment"]
+        CI[CI/CD Pipeline]
+        DOCKER[Docker Container]
+        SERVER[Production Server]
+        MONITOR[Monitoring]
+    end
+
+    %% =========================
+    %% Connections
+    %% =========================
+    UI --> COMP
+    COMP --> STATE
+    STATE --> ROUTE
+
+    ROUTE --> API
+    API --> AUTH
+    AUTH --> LOGIC
+    LOGIC --> CACHE
+
+    LOGIC --> SQL
+    LOGIC --> NOSQL
+    LOGIC --> STORAGE
+
+    CI --> DOCKER
+    DOCKER --> SERVER
+    SERVER --> MONITOR
+
+    SERVER --> API
