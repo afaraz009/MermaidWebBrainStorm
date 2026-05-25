@@ -803,13 +803,14 @@ export function renderFull(ir: IR, mountEl: SVGElement, interactive = false, ori
   }
   mountEl.appendChild(nodeGroup);
 
-  if (interactive) {
-    mountEl.removeAttribute('viewBox');
-    mountEl.setAttribute('width', '2400');
-    mountEl.setAttribute('height', '1800');
-  } else {
-    fitSVG(ir, mountEl);
-  }
+  // Size the SVG to the actual layout extent + padding via fitSVG, in both
+  // interactive and non-interactive modes. The prior interactive branch pinned
+  // the SVG to a fixed 2400x1800 with no viewBox, which caused fixture200's
+  // ~5020x5920 dagre output to extend off the right/bottom of the SVG by
+  // default (the visible "horizontal sprawl" diagnosed 2026-05-25). Setting
+  // width/height equal to viewBox dimensions preserves 1:1 SVG-local <-> model
+  // coordinates, so pan.ts's screenToModel keeps working without changes.
+  fitSVG(ir, mountEl);
 }
 
 // Live drag update — dotted center-to-center straight lines for each connected
