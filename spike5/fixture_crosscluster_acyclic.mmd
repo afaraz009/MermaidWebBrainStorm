@@ -1,0 +1,62 @@
+flowchart TD
+
+    %% =========================
+    %% Cross-cluster edge & label stress fixture — ACYCLIC variant
+    %% Same as fixture_crosscluster.mmd but with the two back-edges
+    %% removed (EventBus -.-> Cache and AnalyticsSvc -.-> Gateway).
+    %% If this renders close to Mermaid's reference while the original
+    %% fixture_crosscluster.mmd diverges wildly, the breakage is in our
+    %% cycle-breaking adapter (chooseEdgesToReverseForMermaidOrder) on
+    %% dense cross-cluster cycles — not in the flat-graph approach
+    %% itself. Different (and smaller) fix surface.
+    %% =========================
+
+    Start([Request]) --> Gateway
+
+    subgraph Frontend [Frontend Cluster]
+        Gateway[API Gateway]
+        AuthCheck{Auth?}
+        RateLimit[/Rate Limit/]
+        Cache[(Response Cache)]
+        Gateway --> AuthCheck
+        AuthCheck -->|yes| RateLimit
+        RateLimit --> Cache
+    end
+
+    subgraph Services [Service Cluster]
+        OrderSvc[Order Service]
+        UserSvc[User Service]
+        InventorySvc[Inventory Service]
+        PricingSvc[Pricing Service]
+        OrderSvc --> UserSvc
+        OrderSvc --> InventorySvc
+        OrderSvc --> PricingSvc
+    end
+
+    subgraph DataLayer [Data Layer]
+        OrderDB[(Orders DB)]
+        UserDB[(Users DB)]
+        InventoryDB[(Inventory DB)]
+        EventBus{{Event Bus}}
+    end
+
+    subgraph External [External Integrations]
+        StripeAPI[Stripe API]
+        EmailSvc[Email Provider]
+        AnalyticsSvc[Analytics]
+    end
+
+    Cache -->|cache miss, fetch fresh order data| OrderSvc
+    Cache -->|cache miss, fetch user profile| UserSvc
+    AuthCheck -->|verify session token against user record| UserSvc
+
+    OrderSvc -->|persist new order record| OrderDB
+    OrderSvc -->|emit OrderCreated event to async consumers| EventBus
+    UserSvc -->|fetch user profile and preferences| UserDB
+    InventorySvc -->|decrement stock atomically| InventoryDB
+    PricingSvc -->|publish price-change events| EventBus
+
+    OrderSvc -->|charge customer via Stripe Connect| StripeAPI
+    OrderSvc -->|send order confirmation email| EmailSvc
+    EventBus -->|forward all events to analytics pipeline| AnalyticsSvc
+
