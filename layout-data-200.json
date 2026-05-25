@@ -1,0 +1,373 @@
+{
+  "mermaid": {
+    "clusters": [
+      {
+        "label": "Analytics",
+        "x": 584,
+        "y": 574,
+        "w": 48,
+        "h": 603
+      },
+      {
+        "label": "Notifications",
+        "x": 524,
+        "y": 642,
+        "w": 67,
+        "h": 325
+      },
+      {
+        "label": "Shipping",
+        "x": 61,
+        "y": 203,
+        "w": 88,
+        "h": 269
+      },
+      {
+        "label": "Inventory",
+        "x": 451,
+        "y": 602,
+        "w": 73,
+        "h": 329
+      },
+      {
+        "label": "Payments",
+        "x": 277,
+        "y": 552,
+        "w": 76,
+        "h": 329
+      },
+      {
+        "label": "Orders",
+        "x": 364,
+        "y": 461,
+        "w": 94,
+        "h": 341
+      },
+      {
+        "label": "Mobile",
+        "x": 197,
+        "y": 440,
+        "w": 77,
+        "h": 337
+      },
+      {
+        "label": "Web",
+        "x": 115,
+        "y": 721,
+        "w": 82,
+        "h": 309
+      },
+      {
+        "label": "Ingest",
+        "x": 582,
+        "y": 388,
+        "w": 36,
+        "h": 224
+      },
+      {
+        "label": "Reporting",
+        "x": 589,
+        "y": 786,
+        "w": 32,
+        "h": 171
+      },
+      {
+        "label": "Email",
+        "x": 507,
+        "y": 581,
+        "w": 28,
+        "h": 195
+      },
+      {
+        "label": "SMS",
+        "x": 539,
+        "y": 695,
+        "w": 31,
+        "h": 211
+      },
+      {
+        "label": "Routing",
+        "x": 36,
+        "y": 151,
+        "w": 32,
+        "h": 158
+      },
+      {
+        "label": "Tracking",
+        "x": 78,
+        "y": 248,
+        "w": 48,
+        "h": 172
+      },
+      {
+        "label": "Catalog",
+        "x": 436,
+        "y": 559,
+        "w": 38,
+        "h": 237
+      },
+      {
+        "label": "Stock",
+        "x": 471,
+        "y": 666,
+        "w": 27,
+        "h": 193
+      },
+      {
+        "label": "Billing",
+        "x": 261,
+        "y": 498,
+        "w": 40,
+        "h": 214
+      },
+      {
+        "label": "Fraud",
+        "x": 298,
+        "y": 615,
+        "w": 27,
+        "h": 194
+      },
+      {
+        "label": "Cart",
+        "x": 382,
+        "y": 397,
+        "w": 53,
+        "h": 205
+      },
+      {
+        "label": "Checkout",
+        "x": 337,
+        "y": 517,
+        "w": 33,
+        "h": 222
+      },
+      {
+        "label": "Push",
+        "x": 176,
+        "y": 374,
+        "w": 28,
+        "h": 197
+      },
+      {
+        "label": "Telemetry",
+        "x": 213,
+        "y": 498,
+        "w": 40,
+        "h": 214
+      },
+      {
+        "label": "Auth",
+        "x": 99,
+        "y": 678,
+        "w": 44,
+        "h": 216
+      },
+      {
+        "label": "Session",
+        "x": 139,
+        "y": 786,
+        "w": 29,
+        "h": 171
+      }
+    ],
+    "nodeCount": 191
+  },
+  "ours": {
+    "clusters": [
+      {
+        "id": "Web",
+        "label": "Web  ▾",
+        "x": 6120,
+        "y": 3606,
+        "w": 693,
+        "h": 2230
+      },
+      {
+        "id": "Mobile",
+        "label": "Mobile  ▾",
+        "x": 5357,
+        "y": 3396,
+        "w": 725,
+        "h": 2350
+      },
+      {
+        "id": "Orders",
+        "label": "Orders  ▾",
+        "x": 4504,
+        "y": 1746,
+        "w": 815,
+        "h": 2410
+      },
+      {
+        "id": "Payments",
+        "label": "Payments  ▾",
+        "x": 3634,
+        "y": 2391,
+        "w": 675,
+        "h": 2360
+      },
+      {
+        "id": "Inventory",
+        "label": "Inventory  ▾",
+        "x": 2705,
+        "y": 1516,
+        "w": 993,
+        "h": 2230
+      },
+      {
+        "id": "Shipping",
+        "label": "Shipping  ▾",
+        "x": 1829,
+        "y": 1596,
+        "w": 650,
+        "h": 2390
+      },
+      {
+        "id": "Notifications",
+        "label": "Notifications  ▾",
+        "x": 1102,
+        "y": 1516,
+        "w": 670,
+        "h": 2230
+      },
+      {
+        "id": "Analytics",
+        "label": "Analytics  ▾",
+        "x": 372,
+        "y": 1516,
+        "w": 665,
+        "h": 2230
+      },
+      {
+        "id": "Web_Auth",
+        "label": "Auth  ▾",
+        "x": 5972,
+        "y": 3273,
+        "w": 355,
+        "h": 1505
+      },
+      {
+        "id": "Web_Session",
+        "label": "Session  ▾",
+        "x": 6325,
+        "y": 4081,
+        "w": 243,
+        "h": 1240
+      },
+      {
+        "id": "Mobile_Push",
+        "label": "Push  ▾",
+        "x": 5577,
+        "y": 3026,
+        "w": 245,
+        "h": 1550
+      },
+      {
+        "id": "Mobile_Telemetry",
+        "label": "Telemetry  ▾",
+        "x": 5203,
+        "y": 3888,
+        "w": 378,
+        "h": 1325
+      },
+      {
+        "id": "Orders_Cart",
+        "label": "Cart  ▾",
+        "x": 4337,
+        "y": 1251,
+        "w": 440,
+        "h": 1360
+      },
+      {
+        "id": "Orders_Checkout",
+        "label": "Checkout  ▾",
+        "x": 4760,
+        "y": 2146,
+        "w": 263,
+        "h": 1570
+      },
+      {
+        "id": "Payments_Billing",
+        "label": "Billing  ▾",
+        "x": 3482,
+        "y": 2006,
+        "w": 330,
+        "h": 1530
+      },
+      {
+        "id": "Payments_Fraud",
+        "label": "Fraud  ▾",
+        "x": 3830,
+        "y": 2823,
+        "w": 243,
+        "h": 1455
+      },
+      {
+        "id": "Inventory_Catalog",
+        "label": "Catalog  ▾",
+        "x": 2554,
+        "y": 1181,
+        "w": 650,
+        "h": 1500
+      },
+      {
+        "id": "Inventory_Stock",
+        "label": "Stock  ▾",
+        "x": 3060,
+        "y": 1926,
+        "w": 243,
+        "h": 1370
+      },
+      {
+        "id": "Shipping_Routing",
+        "label": "Routing  ▾",
+        "x": 1645,
+        "y": 1113,
+        "w": 243,
+        "h": 1365
+      },
+      {
+        "id": "Shipping_Tracking",
+        "label": "Tracking  ▾",
+        "x": 1989,
+        "y": 2006,
+        "w": 290,
+        "h": 1530
+      },
+      {
+        "id": "Notifications_Email",
+        "label": "Email  ▾",
+        "x": 905,
+        "y": 1046,
+        "w": 238,
+        "h": 1230
+      },
+      {
+        "id": "Notifications_SMS",
+        "label": "SMS  ▾",
+        "x": 1248,
+        "y": 1851,
+        "w": 338,
+        "h": 1520
+      },
+      {
+        "id": "Analytics_Ingest",
+        "label": "Ingest  ▾",
+        "x": 194,
+        "y": 1181,
+        "w": 270,
+        "h": 1500
+      },
+      {
+        "id": "Analytics_Reporting",
+        "label": "Reporting  ▾",
+        "x": 544,
+        "y": 1926,
+        "w": 280,
+        "h": 1370
+      }
+    ],
+    "nodeCount": 191
+  },
+  "errors": []
+}

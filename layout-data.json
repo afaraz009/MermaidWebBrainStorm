@@ -1,0 +1,1549 @@
+{
+  "fixture.mmd": {
+    "fixture": "fixture.mmd",
+    "mermaid": {
+      "nodes": [
+        {
+          "id": "flowchart-Q-34",
+          "label": "Enter Card Details",
+          "x": 271,
+          "y": 760,
+          "w": 168,
+          "h": 34
+        },
+        {
+          "id": "flowchart-R-35",
+          "label": "Payment Success?",
+          "x": 332,
+          "y": 914,
+          "w": 175,
+          "h": 175
+        },
+        {
+          "id": "flowchart-S-36",
+          "label": "Success",
+          "x": 417,
+          "y": 1100,
+          "w": 77,
+          "h": 34
+        },
+        {
+          "id": "flowchart-T-37",
+          "label": "Failed",
+          "x": 271,
+          "y": 1100,
+          "w": 67,
+          "h": 34
+        },
+        {
+          "id": "flowchart-M-24",
+          "label": "Login",
+          "x": 271,
+          "y": 1247,
+          "w": 53,
+          "h": 34
+        },
+        {
+          "id": "flowchart-N-25",
+          "label": "Valid User?",
+          "x": 271,
+          "y": 1377,
+          "w": 126,
+          "h": 126
+        },
+        {
+          "id": "flowchart-O-26",
+          "label": "Generate Token",
+          "x": 131,
+          "y": 1539,
+          "w": 144,
+          "h": 34
+        },
+        {
+          "id": "flowchart-P-27",
+          "label": "User DB",
+          "x": 291,
+          "y": 1539,
+          "w": 70,
+          "h": 61
+        },
+        {
+          "id": "flowchart-A-0",
+          "label": "Start",
+          "x": 609,
+          "y": 69,
+          "w": 58,
+          "h": 34
+        },
+        {
+          "id": "flowchart-B-1",
+          "label": "Process Node",
+          "x": 609,
+          "y": 152,
+          "w": 109,
+          "h": 34
+        },
+        {
+          "id": "flowchart-C-3",
+          "label": "Decision Node",
+          "x": 609,
+          "y": 294,
+          "w": 149,
+          "h": 149
+        },
+        {
+          "id": "flowchart-D-5",
+          "label": "Subroutine",
+          "x": 712,
+          "y": 469,
+          "w": 108,
+          "h": 34
+        },
+        {
+          "id": "flowchart-E-7",
+          "label": "Database",
+          "x": 507,
+          "y": 469,
+          "w": 80,
+          "h": 63
+        },
+        {
+          "id": "flowchart-F-9",
+          "label": "Asymmetric Node",
+          "x": 703,
+          "y": 567,
+          "w": 157,
+          "h": 34
+        },
+        {
+          "id": "flowchart-G-11",
+          "label": "Hexagon Node",
+          "x": 507,
+          "y": 567,
+          "w": 134,
+          "h": 34
+        },
+        {
+          "id": "flowchart-H-13",
+          "label": "Input Output",
+          "x": 609,
+          "y": 651,
+          "w": 129,
+          "h": 34
+        },
+        {
+          "id": "flowchart-I-17",
+          "label": "Manual Input",
+          "x": 609,
+          "y": 760,
+          "w": 119,
+          "h": 34
+        },
+        {
+          "id": "flowchart-J-19",
+          "label": "Circle Node",
+          "x": 609,
+          "y": 914,
+          "w": 108,
+          "h": 108
+        },
+        {
+          "id": "flowchart-K-21",
+          "label": "Storage",
+          "x": 609,
+          "y": 1100,
+          "w": 69,
+          "h": 60
+        },
+        {
+          "id": "flowchart-L-23",
+          "label": "End",
+          "x": 525,
+          "y": 1247,
+          "w": 50,
+          "h": 34
+        }
+      ],
+      "clusters": [
+        {
+          "label": "Payment_System",
+          "x": 275,
+          "y": 936,
+          "w": 479,
+          "h": 438
+        },
+        {
+          "label": "Authentication",
+          "x": 200,
+          "y": 1400,
+          "w": 351,
+          "h": 389
+        }
+      ]
+    },
+    "ours": {
+      "nodes": [
+        {
+          "id": "A",
+          "label": "Start",
+          "x": 756,
+          "y": 249,
+          "w": 140,
+          "h": 50
+        },
+        {
+          "id": "B",
+          "label": "Process Node",
+          "x": 756,
+          "y": 344,
+          "w": 130,
+          "h": 40
+        },
+        {
+          "id": "C",
+          "label": "Decision Node",
+          "x": 756,
+          "y": 454,
+          "w": 140,
+          "h": 80
+        },
+        {
+          "id": "D",
+          "label": "Subroutine",
+          "x": 856,
+          "y": 574,
+          "w": 150,
+          "h": 50
+        },
+        {
+          "id": "E",
+          "label": "Database",
+          "x": 656,
+          "y": 574,
+          "w": 140,
+          "h": 60
+        },
+        {
+          "id": "F",
+          "label": "Asymmetric Node",
+          "x": 856,
+          "y": 684,
+          "w": 150,
+          "h": 50
+        },
+        {
+          "id": "G",
+          "label": "Hexagon Node",
+          "x": 656,
+          "y": 684,
+          "w": 150,
+          "h": 60
+        },
+        {
+          "id": "H",
+          "label": "Input Output",
+          "x": 756,
+          "y": 789,
+          "w": 160,
+          "h": 50
+        },
+        {
+          "id": "I",
+          "label": "Manual Input",
+          "x": 756,
+          "y": 914,
+          "w": 160,
+          "h": 50
+        },
+        {
+          "id": "J",
+          "label": "Circle Node",
+          "x": 756,
+          "y": 1045,
+          "w": 112,
+          "h": 112
+        },
+        {
+          "id": "K",
+          "label": "Storage",
+          "x": 756,
+          "y": 1181,
+          "w": 140,
+          "h": 60
+        },
+        {
+          "id": "L",
+          "label": "End",
+          "x": 646,
+          "y": 1336,
+          "w": 140,
+          "h": 50
+        },
+        {
+          "id": "M",
+          "label": "Login",
+          "x": 319,
+          "y": 1336,
+          "w": 130,
+          "h": 40
+        },
+        {
+          "id": "N",
+          "label": "Valid User?",
+          "x": 319,
+          "y": 1451,
+          "w": 140,
+          "h": 80
+        },
+        {
+          "id": "O",
+          "label": "Generate Token",
+          "x": 134,
+          "y": 1571,
+          "w": 150,
+          "h": 50
+        },
+        {
+          "id": "P",
+          "label": "User DB",
+          "x": 329,
+          "y": 1571,
+          "w": 140,
+          "h": 60
+        },
+        {
+          "id": "Q",
+          "label": "Enter Card Details",
+          "x": 327,
+          "y": 914,
+          "w": 168,
+          "h": 50
+        },
+        {
+          "id": "R",
+          "label": "Payment Success?",
+          "x": 414,
+          "y": 1045,
+          "w": 152,
+          "h": 80
+        },
+        {
+          "id": "S",
+          "label": "Success",
+          "x": 529,
+          "y": 1181,
+          "w": 140,
+          "h": 50
+        },
+        {
+          "id": "T",
+          "label": "Failed",
+          "x": 319,
+          "y": 1181,
+          "w": 140,
+          "h": 50
+        }
+      ],
+      "clusters": [
+        {
+          "id": "Authentication",
+          "label": "Authentication  ▾",
+          "x": 229,
+          "y": 1453,
+          "w": 380,
+          "h": 335
+        },
+        {
+          "id": "Payment_System",
+          "label": "Payment_System  ▾",
+          "x": 421,
+          "y": 1042,
+          "w": 397,
+          "h": 367
+        }
+      ]
+    },
+    "errors": []
+  },
+  "fixture_crosscluster.mmd": {
+    "fixture": "fixture_crosscluster.mmd",
+    "mermaid": {
+      "nodes": [
+        {
+          "id": "flowchart-StripeAPI-26",
+          "label": "Stripe API",
+          "x": 655,
+          "y": 350,
+          "w": 32,
+          "h": 13
+        },
+        {
+          "id": "flowchart-EmailSvc-27",
+          "label": "Email Provider",
+          "x": 712,
+          "y": 350,
+          "w": 45,
+          "h": 13
+        },
+        {
+          "id": "flowchart-AnalyticsSvc-28",
+          "label": "Analytics",
+          "x": 729,
+          "y": 63,
+          "w": 30,
+          "h": 13
+        },
+        {
+          "id": "flowchart-OrderDB-22",
+          "label": "Orders DB",
+          "x": 60,
+          "y": 414,
+          "w": 32,
+          "h": 24
+        },
+        {
+          "id": "flowchart-UserDB-23",
+          "label": "Users DB",
+          "x": 126,
+          "y": 414,
+          "w": 29,
+          "h": 23
+        },
+        {
+          "id": "flowchart-InventoryDB-24",
+          "label": "Inventory DB",
+          "x": 217,
+          "y": 414,
+          "w": 40,
+          "h": 26
+        },
+        {
+          "id": "flowchart-EventBus-25",
+          "label": "Event Bus",
+          "x": 606,
+          "y": 414,
+          "w": 38,
+          "h": 13
+        },
+        {
+          "id": "flowchart-OrderSvc-12",
+          "label": "Order Service",
+          "x": 306,
+          "y": 312,
+          "w": 42,
+          "h": 13
+        },
+        {
+          "id": "flowchart-UserSvc-13",
+          "label": "User Service",
+          "x": 126,
+          "y": 350,
+          "w": 39,
+          "h": 13
+        },
+        {
+          "id": "flowchart-InventorySvc-14",
+          "label": "Inventory Service",
+          "x": 217,
+          "y": 350,
+          "w": 52,
+          "h": 13
+        },
+        {
+          "id": "flowchart-PricingSvc-15",
+          "label": "Pricing Service",
+          "x": 415,
+          "y": 350,
+          "w": 45,
+          "h": 13
+        },
+        {
+          "id": "flowchart-Gateway-1",
+          "label": "API Gateway",
+          "x": 252,
+          "y": 111,
+          "w": 40,
+          "h": 13
+        },
+        {
+          "id": "flowchart-AuthCheck-3",
+          "label": "Auth?",
+          "x": 252,
+          "y": 153,
+          "w": 33,
+          "h": 33
+        },
+        {
+          "id": "flowchart-RateLimit-4",
+          "label": "Rate Limit",
+          "x": 306,
+          "y": 201,
+          "w": 42,
+          "h": 13
+        },
+        {
+          "id": "flowchart-Cache-5",
+          "label": "Response Cache",
+          "x": 306,
+          "y": 247,
+          "w": 48,
+          "h": 27
+        },
+        {
+          "id": "flowchart-Start-0",
+          "label": "Request",
+          "x": 252,
+          "y": 63,
+          "w": 30,
+          "h": 13
+        }
+      ],
+      "clusters": [
+        {
+          "label": "External Integrations",
+          "x": 717,
+          "y": 206,
+          "w": 186,
+          "h": 319
+        },
+        {
+          "label": "Data Layer",
+          "x": 458,
+          "y": 414,
+          "w": 856,
+          "h": 45
+        },
+        {
+          "label": "Service Cluster",
+          "x": 317,
+          "y": 331,
+          "w": 597,
+          "h": 70
+        },
+        {
+          "label": "Frontend Cluster",
+          "x": 227,
+          "y": 182,
+          "w": 232,
+          "h": 175
+        }
+      ]
+    },
+    "ours": {
+      "nodes": [
+        {
+          "id": "Start",
+          "label": "Request",
+          "x": 964,
+          "y": 249,
+          "w": 140,
+          "h": 50
+        },
+        {
+          "id": "Gateway",
+          "label": "API Gateway",
+          "x": 964,
+          "y": 369,
+          "w": 130,
+          "h": 40
+        },
+        {
+          "id": "AuthCheck",
+          "label": "Auth?",
+          "x": 602,
+          "y": 479,
+          "w": 140,
+          "h": 80
+        },
+        {
+          "id": "RateLimit",
+          "label": "Rate Limit",
+          "x": 487,
+          "y": 594,
+          "w": 160,
+          "h": 50
+        },
+        {
+          "id": "Cache",
+          "label": "Response Cache",
+          "x": 487,
+          "y": 699,
+          "w": 140,
+          "h": 60
+        },
+        {
+          "id": "OrderSvc",
+          "label": "Order Service",
+          "x": 387,
+          "y": 849,
+          "w": 130,
+          "h": 40
+        },
+        {
+          "id": "UserSvc",
+          "label": "User Service",
+          "x": 622,
+          "y": 939,
+          "w": 130,
+          "h": 40
+        },
+        {
+          "id": "InventorySvc",
+          "label": "Inventory Service",
+          "x": 825,
+          "y": 939,
+          "w": 160,
+          "h": 40
+        },
+        {
+          "id": "PricingSvc",
+          "label": "Pricing Service",
+          "x": 1047,
+          "y": 939,
+          "w": 144,
+          "h": 40
+        },
+        {
+          "id": "OrderDB",
+          "label": "Orders DB",
+          "x": 432,
+          "y": 1089,
+          "w": 140,
+          "h": 60
+        },
+        {
+          "id": "UserDB",
+          "label": "Users DB",
+          "x": 622,
+          "y": 1089,
+          "w": 140,
+          "h": 60
+        },
+        {
+          "id": "InventoryDB",
+          "label": "Inventory DB",
+          "x": 825,
+          "y": 1089,
+          "w": 140,
+          "h": 60
+        },
+        {
+          "id": "EventBus",
+          "label": "Event Bus",
+          "x": 1064,
+          "y": 1089,
+          "w": 150,
+          "h": 60
+        },
+        {
+          "id": "StripeAPI",
+          "label": "Stripe API",
+          "x": 124,
+          "y": 1239,
+          "w": 130,
+          "h": 40
+        },
+        {
+          "id": "EmailSvc",
+          "label": "Email Provider",
+          "x": 307,
+          "y": 1239,
+          "w": 136,
+          "h": 40
+        },
+        {
+          "id": "AnalyticsSvc",
+          "label": "Analytics",
+          "x": 1130,
+          "y": 1239,
+          "w": 130,
+          "h": 40
+        }
+      ],
+      "clusters": [
+        {
+          "id": "Frontend",
+          "label": "Frontend Cluster  ▾",
+          "x": 718,
+          "y": 534,
+          "w": 662,
+          "h": 430
+        },
+        {
+          "id": "Services",
+          "label": "Service Cluster  ▾",
+          "x": 720,
+          "y": 889,
+          "w": 837,
+          "h": 180
+        },
+        {
+          "id": "DataLayer",
+          "label": "Data Layer  ▾",
+          "x": 751,
+          "y": 1084,
+          "w": 817,
+          "h": 110
+        },
+        {
+          "id": "External",
+          "label": "External Integrations  ▾",
+          "x": 627,
+          "y": 1234,
+          "w": 1176,
+          "h": 90
+        }
+      ]
+    },
+    "errors": []
+  },
+  "fixture_crosscluster_acyclic.mmd": {
+    "fixture": "fixture_crosscluster_acyclic.mmd",
+    "mermaid": {
+      "nodes": [
+        {
+          "id": "flowchart-StripeAPI-26",
+          "label": "Stripe API",
+          "x": 94,
+          "y": 660,
+          "w": 48,
+          "h": 19
+        },
+        {
+          "id": "flowchart-EmailSvc-27",
+          "label": "Email Provider",
+          "x": 242,
+          "y": 660,
+          "w": 68,
+          "h": 19
+        },
+        {
+          "id": "flowchart-AnalyticsSvc-28",
+          "label": "Analytics",
+          "x": 830,
+          "y": 660,
+          "w": 46,
+          "h": 19
+        },
+        {
+          "id": "flowchart-OrderDB-22",
+          "label": "Orders DB",
+          "x": 316,
+          "y": 562,
+          "w": 49,
+          "h": 37
+        },
+        {
+          "id": "flowchart-UserDB-23",
+          "label": "Users DB",
+          "x": 435,
+          "y": 562,
+          "w": 44,
+          "h": 36
+        },
+        {
+          "id": "flowchart-InventoryDB-24",
+          "label": "Inventory DB",
+          "x": 580,
+          "y": 562,
+          "w": 61,
+          "h": 39
+        },
+        {
+          "id": "flowchart-EventBus-25",
+          "label": "Event Bus",
+          "x": 830,
+          "y": 562,
+          "w": 58,
+          "h": 19
+        },
+        {
+          "id": "flowchart-OrderSvc-12",
+          "label": "Order Service",
+          "x": 252,
+          "y": 416,
+          "w": 65,
+          "h": 19
+        },
+        {
+          "id": "flowchart-UserSvc-13",
+          "label": "User Service",
+          "x": 435,
+          "y": 465,
+          "w": 59,
+          "h": 19
+        },
+        {
+          "id": "flowchart-InventorySvc-14",
+          "label": "Inventory Service",
+          "x": 580,
+          "y": 465,
+          "w": 80,
+          "h": 19
+        },
+        {
+          "id": "flowchart-PricingSvc-15",
+          "label": "Pricing Service",
+          "x": 881,
+          "y": 465,
+          "w": 69,
+          "h": 19
+        },
+        {
+          "id": "flowchart-Gateway-1",
+          "label": "API Gateway",
+          "x": 434,
+          "y": 121,
+          "w": 60,
+          "h": 19
+        },
+        {
+          "id": "flowchart-AuthCheck-3",
+          "label": "Auth?",
+          "x": 434,
+          "y": 184,
+          "w": 50,
+          "h": 50
+        },
+        {
+          "id": "flowchart-RateLimit-4",
+          "label": "Rate Limit",
+          "x": 365,
+          "y": 259,
+          "w": 64,
+          "h": 19
+        },
+        {
+          "id": "flowchart-Cache-5",
+          "label": "Response Cache",
+          "x": 365,
+          "y": 318,
+          "w": 74,
+          "h": 41
+        },
+        {
+          "id": "flowchart-Start-0",
+          "label": "Request",
+          "x": 434,
+          "y": 58,
+          "w": 46,
+          "h": 19
+        }
+      ],
+      "clusters": [
+        {
+          "label": "External Integrations",
+          "x": 461,
+          "y": 660,
+          "w": 823,
+          "h": 48
+        },
+        {
+          "label": "Data Layer",
+          "x": 601,
+          "y": 562,
+          "w": 660,
+          "h": 68
+        },
+        {
+          "label": "Service Cluster",
+          "x": 499,
+          "y": 440,
+          "w": 873,
+          "h": 96
+        },
+        {
+          "label": "Frontend Cluster",
+          "x": 431,
+          "y": 225,
+          "w": 405,
+          "h": 256
+        }
+      ]
+    },
+    "ours": {
+      "nodes": [
+        {
+          "id": "Start",
+          "label": "Request",
+          "x": 622,
+          "y": 249,
+          "w": 140,
+          "h": 50
+        },
+        {
+          "id": "Gateway",
+          "label": "API Gateway",
+          "x": 622,
+          "y": 369,
+          "w": 130,
+          "h": 40
+        },
+        {
+          "id": "AuthCheck",
+          "label": "Auth?",
+          "x": 622,
+          "y": 479,
+          "w": 140,
+          "h": 80
+        },
+        {
+          "id": "RateLimit",
+          "label": "Rate Limit",
+          "x": 725,
+          "y": 594,
+          "w": 160,
+          "h": 50
+        },
+        {
+          "id": "Cache",
+          "label": "Response Cache",
+          "x": 725,
+          "y": 699,
+          "w": 140,
+          "h": 60
+        },
+        {
+          "id": "OrderSvc",
+          "label": "Order Service",
+          "x": 825,
+          "y": 849,
+          "w": 130,
+          "h": 40
+        },
+        {
+          "id": "UserSvc",
+          "label": "User Service",
+          "x": 622,
+          "y": 939,
+          "w": 130,
+          "h": 40
+        },
+        {
+          "id": "InventorySvc",
+          "label": "Inventory Service",
+          "x": 817,
+          "y": 939,
+          "w": 160,
+          "h": 40
+        },
+        {
+          "id": "PricingSvc",
+          "label": "Pricing Service",
+          "x": 1019,
+          "y": 939,
+          "w": 144,
+          "h": 40
+        },
+        {
+          "id": "OrderDB",
+          "label": "Orders DB",
+          "x": 432,
+          "y": 1089,
+          "w": 140,
+          "h": 60
+        },
+        {
+          "id": "UserDB",
+          "label": "Users DB",
+          "x": 622,
+          "y": 1089,
+          "w": 140,
+          "h": 60
+        },
+        {
+          "id": "InventoryDB",
+          "label": "Inventory DB",
+          "x": 817,
+          "y": 1089,
+          "w": 140,
+          "h": 60
+        },
+        {
+          "id": "EventBus",
+          "label": "Event Bus",
+          "x": 1079,
+          "y": 1089,
+          "w": 150,
+          "h": 60
+        },
+        {
+          "id": "StripeAPI",
+          "label": "Stripe API",
+          "x": 124,
+          "y": 1239,
+          "w": 130,
+          "h": 40
+        },
+        {
+          "id": "EmailSvc",
+          "label": "Email Provider",
+          "x": 307,
+          "y": 1239,
+          "w": 136,
+          "h": 40
+        },
+        {
+          "id": "AnalyticsSvc",
+          "label": "Analytics",
+          "x": 1079,
+          "y": 1239,
+          "w": 130,
+          "h": 40
+        }
+      ],
+      "clusters": [
+        {
+          "id": "Frontend",
+          "label": "Frontend Cluster  ▾",
+          "x": 678,
+          "y": 534,
+          "w": 293,
+          "h": 430
+        },
+        {
+          "id": "Services",
+          "label": "Service Cluster  ▾",
+          "x": 824,
+          "y": 889,
+          "w": 574,
+          "h": 180
+        },
+        {
+          "id": "DataLayer",
+          "label": "Data Layer  ▾",
+          "x": 758,
+          "y": 1084,
+          "w": 832,
+          "h": 110
+        },
+        {
+          "id": "External",
+          "label": "External Integrations  ▾",
+          "x": 601,
+          "y": 1234,
+          "w": 1125,
+          "h": 90
+        }
+      ]
+    },
+    "errors": []
+  },
+  "fixture_nested.mmd": {
+    "fixture": "fixture_nested.mmd",
+    "mermaid": {
+      "nodes": [
+        {
+          "id": "flowchart-PlatformIngress-1",
+          "label": "Ingress Gateway",
+          "x": 413,
+          "y": 155,
+          "w": 110,
+          "h": 28
+        },
+        {
+          "id": "flowchart-PlatformExit-3",
+          "label": "Egress",
+          "x": 172,
+          "y": 1315,
+          "w": 50,
+          "h": 28
+        },
+        {
+          "id": "flowchart-CacheHot-45",
+          "label": "Hot Cache",
+          "x": 591,
+          "y": 1073,
+          "w": 74,
+          "h": 54
+        },
+        {
+          "id": "flowchart-CacheCold-46",
+          "label": "Cold Cache",
+          "x": 591,
+          "y": 1188,
+          "w": 79,
+          "h": 55
+        },
+        {
+          "id": "flowchart-PrimaryWrite-41",
+          "label": "Primary Writes",
+          "x": 172,
+          "y": 1073,
+          "w": 100,
+          "h": 59
+        },
+        {
+          "id": "flowchart-PrimaryRead-42",
+          "label": "Primary Reads",
+          "x": 172,
+          "y": 1188,
+          "w": 97,
+          "h": 58
+        },
+        {
+          "id": "flowchart-ServiceRouter-4",
+          "label": "Service Router",
+          "x": 413,
+          "y": 295,
+          "w": 127,
+          "h": 127
+        },
+        {
+          "id": "flowchart-PaymentEntry-21",
+          "label": "Payment Entry",
+          "x": 621,
+          "y": 451,
+          "w": 99,
+          "h": 28
+        },
+        {
+          "id": "flowchart-RefundQueue-29",
+          "label": "Refund Queue",
+          "x": 587,
+          "y": 588,
+          "w": 115,
+          "h": 28
+        },
+        {
+          "id": "flowchart-RefundExec-30",
+          "label": "Execute Refund",
+          "x": 587,
+          "y": 735,
+          "w": 119,
+          "h": 28
+        },
+        {
+          "id": "flowchart-CardValidate-22",
+          "label": "Validate Card",
+          "x": 782,
+          "y": 588,
+          "w": 121,
+          "h": 121
+        },
+        {
+          "id": "flowchart-CardCharge-23",
+          "label": "Charge Card",
+          "x": 782,
+          "y": 735,
+          "w": 99,
+          "h": 28
+        },
+        {
+          "id": "flowchart-CardLog-24",
+          "label": "Charge Log",
+          "x": 782,
+          "y": 870,
+          "w": 79,
+          "h": 55
+        },
+        {
+          "id": "flowchart-AuthEntry-5",
+          "label": "Auth Entry",
+          "x": 204,
+          "y": 451,
+          "w": 76,
+          "h": 28
+        },
+        {
+          "id": "flowchart-SessionCreate-13",
+          "label": "Create Session",
+          "x": 363,
+          "y": 588,
+          "w": 113,
+          "h": 28
+        },
+        {
+          "id": "flowchart-SessionCache-14",
+          "label": "Session Cache",
+          "x": 363,
+          "y": 735,
+          "w": 95,
+          "h": 58
+        },
+        {
+          "id": "flowchart-TokenGen-6",
+          "label": "Generate Token",
+          "x": 162,
+          "y": 588,
+          "w": 120,
+          "h": 28
+        },
+        {
+          "id": "flowchart-TokenSign-7",
+          "label": "Sign Token",
+          "x": 162,
+          "y": 735,
+          "w": 88,
+          "h": 28
+        },
+        {
+          "id": "flowchart-TokenStore-8",
+          "label": "Token Store",
+          "x": 162,
+          "y": 870,
+          "w": 82,
+          "h": 56
+        },
+        {
+          "id": "flowchart-Entry-0",
+          "label": "API Entry",
+          "x": 413,
+          "y": 65,
+          "w": 74,
+          "h": 28
+        },
+        {
+          "id": "flowchart-Done-60",
+          "label": "Done",
+          "x": 172,
+          "y": 1405,
+          "w": 49,
+          "h": 28
+        }
+      ],
+      "clusters": [
+        {
+          "label": "Platform",
+          "x": 472,
+          "y": 735,
+          "w": 899,
+          "h": 1229
+        },
+        {
+          "label": "Services Layer",
+          "x": 472,
+          "y": 585,
+          "w": 865,
+          "h": 749
+        },
+        {
+          "label": "Storage Layer",
+          "x": 375,
+          "y": 1130,
+          "w": 602,
+          "h": 257
+        },
+        {
+          "label": "Auth Subsystem",
+          "x": 260,
+          "y": 678,
+          "w": 409,
+          "h": 523
+        },
+        {
+          "label": "Payment Subsystem",
+          "x": 685,
+          "y": 678,
+          "w": 406,
+          "h": 523
+        },
+        {
+          "label": "Token Internals",
+          "x": 162,
+          "y": 713,
+          "w": 178,
+          "h": 411
+        },
+        {
+          "label": "Session Internals",
+          "x": 363,
+          "y": 646,
+          "w": 171,
+          "h": 278
+        },
+        {
+          "label": "Card Processor",
+          "x": 782,
+          "y": 713,
+          "w": 179,
+          "h": 411
+        },
+        {
+          "label": "Refund Processor",
+          "x": 587,
+          "y": 646,
+          "w": 177,
+          "h": 278
+        },
+        {
+          "label": "Primary DB",
+          "x": 292,
+          "y": 1130,
+          "w": 401,
+          "h": 216
+        },
+        {
+          "label": "Cache Layer",
+          "x": 591,
+          "y": 1130,
+          "w": 138,
+          "h": 216
+        }
+      ]
+    },
+    "ours": {
+      "nodes": [
+        {
+          "id": "Entry",
+          "label": "API Entry",
+          "x": 492,
+          "y": 249,
+          "w": 140,
+          "h": 50
+        },
+        {
+          "id": "PlatformIngress",
+          "label": "Ingress Gateway",
+          "x": 492,
+          "y": 369,
+          "w": 144,
+          "h": 40
+        },
+        {
+          "id": "PlatformExit",
+          "label": "Egress",
+          "x": 209,
+          "y": 1524,
+          "w": 130,
+          "h": 40
+        },
+        {
+          "id": "ServiceRouter",
+          "label": "Service Router",
+          "x": 492,
+          "y": 504,
+          "w": 140,
+          "h": 80
+        },
+        {
+          "id": "AuthEntry",
+          "label": "Auth Entry",
+          "x": 227,
+          "y": 639,
+          "w": 130,
+          "h": 40
+        },
+        {
+          "id": "TokenGen",
+          "label": "Generate Token",
+          "x": 194,
+          "y": 774,
+          "w": 150,
+          "h": 50
+        },
+        {
+          "id": "TokenSign",
+          "label": "Sign Token",
+          "x": 194,
+          "y": 894,
+          "w": 150,
+          "h": 50
+        },
+        {
+          "id": "TokenStore",
+          "label": "Token Store",
+          "x": 194,
+          "y": 1029,
+          "w": 140,
+          "h": 60
+        },
+        {
+          "id": "SessionCreate",
+          "label": "Create Session",
+          "x": 449,
+          "y": 774,
+          "w": 150,
+          "h": 50
+        },
+        {
+          "id": "SessionCache",
+          "label": "Session Cache",
+          "x": 449,
+          "y": 894,
+          "w": 140,
+          "h": 60
+        },
+        {
+          "id": "PaymentEntry",
+          "label": "Payment Entry",
+          "x": 754,
+          "y": 639,
+          "w": 130,
+          "h": 40
+        },
+        {
+          "id": "CardValidate",
+          "label": "Validate Card",
+          "x": 979,
+          "y": 774,
+          "w": 140,
+          "h": 80
+        },
+        {
+          "id": "CardCharge",
+          "label": "Charge Card",
+          "x": 979,
+          "y": 894,
+          "w": 150,
+          "h": 50
+        },
+        {
+          "id": "CardLog",
+          "label": "Charge Log",
+          "x": 979,
+          "y": 1029,
+          "w": 140,
+          "h": 60
+        },
+        {
+          "id": "RefundQueue",
+          "label": "Refund Queue",
+          "x": 734,
+          "y": 774,
+          "w": 160,
+          "h": 50
+        },
+        {
+          "id": "RefundExec",
+          "label": "Execute Refund",
+          "x": 734,
+          "y": 894,
+          "w": 150,
+          "h": 50
+        },
+        {
+          "id": "PrimaryWrite",
+          "label": "Primary Writes",
+          "x": 209,
+          "y": 1264,
+          "w": 140,
+          "h": 60
+        },
+        {
+          "id": "PrimaryRead",
+          "label": "Primary Reads",
+          "x": 209,
+          "y": 1374,
+          "w": 140,
+          "h": 60
+        },
+        {
+          "id": "CacheHot",
+          "label": "Hot Cache",
+          "x": 727,
+          "y": 1264,
+          "w": 140,
+          "h": 60
+        },
+        {
+          "id": "CacheCold",
+          "label": "Cold Cache",
+          "x": 727,
+          "y": 1374,
+          "w": 140,
+          "h": 60
+        },
+        {
+          "id": "Done",
+          "label": "Done",
+          "x": 209,
+          "y": 1644,
+          "w": 140,
+          "h": 50
+        }
+      ],
+      "clusters": [
+        {
+          "id": "Platform_Top",
+          "label": "Platform  ▾",
+          "x": 587,
+          "y": 941,
+          "w": 1095,
+          "h": 1245
+        },
+        {
+          "id": "TokenInner_L4",
+          "label": "Token Internals  ▾",
+          "x": 194,
+          "y": 899,
+          "w": 190,
+          "h": 360
+        },
+        {
+          "id": "SessionInner_L4",
+          "label": "Session Internals  ▾",
+          "x": 449,
+          "y": 831,
+          "w": 190,
+          "h": 225
+        },
+        {
+          "id": "Auth_L3",
+          "label": "Auth Subsystem  ▾",
+          "x": 322,
+          "y": 844,
+          "w": 485,
+          "h": 510
+        },
+        {
+          "id": "CardProc_L4",
+          "label": "Card Processor  ▾",
+          "x": 979,
+          "y": 891,
+          "w": 190,
+          "h": 375
+        },
+        {
+          "id": "Refund_L4",
+          "label": "Refund Processor  ▾",
+          "x": 734,
+          "y": 829,
+          "w": 200,
+          "h": 220
+        },
+        {
+          "id": "Payments_L3",
+          "label": "Payment Subsystem  ▾",
+          "x": 854,
+          "y": 844,
+          "w": 480,
+          "h": 510
+        },
+        {
+          "id": "Services_L2",
+          "label": "Services Layer  ▾",
+          "x": 587,
+          "y": 776,
+          "w": 1055,
+          "h": 685
+        },
+        {
+          "id": "PrimaryDB_L3",
+          "label": "Primary DB  ▾",
+          "x": 209,
+          "y": 1314,
+          "w": 180,
+          "h": 220
+        },
+        {
+          "id": "CacheLayer_L3",
+          "label": "Cache Layer  ▾",
+          "x": 727,
+          "y": 1314,
+          "w": 180,
+          "h": 220
+        },
+        {
+          "id": "Storage_L2",
+          "label": "Storage Layer  ▾",
+          "x": 468,
+          "y": 1309,
+          "w": 738,
+          "h": 270
+        }
+      ]
+    },
+    "errors": []
+  }
+}
