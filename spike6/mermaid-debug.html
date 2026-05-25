@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Mermaid Debug (Graph dump)</title>
+  <style>body { font-family: sans-serif; padding: 16px; }</style>
+</head>
+<body>
+  <h2>Mermaid Debug — captures Graph-before-layout dump</h2>
+  <p>Reads <code>?fixture=…</code>; renders with logLevel:'info' and tees console.* output to <code>window.__dump</code>.</p>
+  <div id="diagram"></div>
+  <pre id="status">loading…</pre>
+  <script type="module">
+    import mermaid from 'mermaid';
+
+    // Tee every console method so Mermaid's internal info/log lines are
+    // captured into window.__dump for Playwright extraction.
+    window.__dump = [];
+    for (const m of ['log','info','warn','debug']) {
+      const orig = console[m].bind(console);
+      console[m] = (...args) => {
+        window.__dump.push({ method: m, args: args.map(a => {
+          try { return typeof a === 'string' ? a : JSON.stringify(a); } catch { return String(a); }
+        }) });
+        orig(...args);
+      };
+    }
+
+    mermaid.initialize({ startOnLoad: false, theme: 'default', logLevel: 'info' });
+    const params = new URLSearchParams(window.location.search);
+    const fixture = params.get('fixture') || 'fixture.mmd';
+    document.getElementById('status').textContent = 'loading ' + fixture;
+
+    const src = await fetch('./' + fixture).then(r => r.text());
+    const { svg } = await mermaid.render('mermaid-svg', src);
+    document.getElementById('diagram').innerHTML = svg;
+    document.getElementById('status').textContent = 'done — ' + window.__dump.length + ' log entries';
+    window.__ready = true;
+  </script>
+</body>
+</html>
