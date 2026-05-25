@@ -1,5 +1,29 @@
 import type { IR, IRNode, IREdge, IRSubgraph, NodeShape } from './types.js';
 
+// Recursively find the first leaf (non-subgraph) descendant of a subgraph,
+// walking sg.nodes in declaration order. Mirrors Mermaid's findNonClusterChild
+// (dagre-KV5264BT.mjs:161) minus the findCommonEdges scoring — that scoring
+// exists for Mermaid's render-time splice case which we don't have, so
+// first-leaf is sufficient for crash avoidance. Returns undefined for an
+// empty subgraph.
+function firstLeafDescendant(
+  sgId: string,
+  rawSubgraphsById: Map<string, any>,
+  subgraphIds: Set<string>,
+): string | undefined {
+  const sg = rawSubgraphsById.get(sgId);
+  if (!sg) return undefined;
+  for (const childId of sg.nodes) {
+    if (subgraphIds.has(childId)) {
+      const inner = firstLeafDescendant(childId, rawSubgraphsById, subgraphIds);
+      if (inner) return inner;
+    } else {
+      return childId;
+    }
+  }
+  return undefined;
+}
+
 // Mermaid's flowDb is a class instance exposed after parse.
 // We access it via the Diagram API introduced in mermaid v10+.
 export async function parseToIR(source: string): Promise<IR> {
@@ -68,7 +92,39 @@ export async function parseToIR(source: string): Promise<IR> {
     style: e.stroke === 'dotted' ? 'dotted' : 'solid',
   }));
 
-  return { nodes, edges, subgraphs };
+  // Rewrite edges whose endpoint is a subgraph id — @dagrejs/dagre's compound
+  // layout throws `TypeError: Cannot set properties of undefined (setting
+  // 'rank')` when an edge endpoint is a compound node. Reroute to the first
+  // leaf descendant of the subgraph; drop the edge if the subgraph is empty.
+  // Uses rawSubgraphs (which carry the full .nodes child list) rather than
+  // the mapped IRSubgraph[] (which only keeps leaf children).
+  const rawSubgraphsById = new Map<string, any>(rawSubgraphs.map((sg: any) => [sg.id, sg]));
+  const rewrittenEdges: IREdge[] = [];
+  for (const e of edges) {
+    let { from, to } = e;
+    let rewrote = false;
+    if (subgraphIds.has(from)) {
+      const leaf = firstLeafDescendant(from, rawSubgraphsById, subgraphIds);
+      if (!leaf) {
+        console.warn(`[parser-adapter] dropping edge from empty subgraph "${from}" → "${to}"`);
+        continue;
+      }
+      from = leaf;
+      rewrote = true;
+    }
+    if (subgraphIds.has(to)) {
+      const leaf = firstLeafDescendant(to, rawSubgraphsById, subgraphIds);
+      if (!leaf) {
+        console.warn(`[parser-adapter] dropping edge from "${e.from}" → empty subgraph "${to}"`);
+        continue;
+      }
+      to = leaf;
+      rewrote = true;
+    }
+    rewrittenEdges.push(rewrote ? { ...e, from, to } : e);
+  }
+
+  return { nodes, edges: rewrittenEdges, subgraphs };
 }
 
 // Mermaid's `vertex.type` covers the full FlowVertexTypeParam union; we
