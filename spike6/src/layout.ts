@@ -161,6 +161,14 @@ export function layout(ir: IR): IR {
     g.setEdge(e.from, e.to, { label: e.label || '', weight: 1 });
   }
 
+  // Temporary diagnostic: when `?dump=1`, capture our dagre-d3-es input graph
+  // before layout for field-by-field diffing against Mermaid's. Remove once
+  // the fixture_nested / fixture200 divergence is understood.
+  if (typeof window !== 'undefined' &&
+      new URLSearchParams(window.location.search).get('dump') === '1') {
+    (window as any).__oursGraphDump = dumpGraph(g);
+  }
+
   dagreLayout(g, {});
 
   // Write positions back to IR nodes. When A* is on, snap each non-pinned
@@ -209,4 +217,25 @@ export function layout(ir: IR): IR {
   }
 
   return ir;
+}
+
+// Temporary diagnostic for fixture_nested / fixture200 parity investigation.
+// Dumps the dagre-d3-es input graph as a plain object so it can be compared
+// to Mermaid's `Graph before layout:` JSON. Delete this helper once the
+// barycenter divergence is understood.
+function dumpGraph(g: any) {
+  // Deep-clone via JSON round-trip — graphlib value objects are mutated in
+  // place by dagreLayout, so we must snapshot them at dump time.
+  return JSON.parse(JSON.stringify({
+    graph: g.graph(),
+    nodes: g.nodes().map((id: string) => ({
+      id,
+      value: g.node(id),
+      parent: g.parent(id) ?? null,
+    })),
+    edges: g.edges().map((e: any) => ({
+      v: e.v, w: e.w, name: e.name,
+      value: g.edge(e),
+    })),
+  }));
 }

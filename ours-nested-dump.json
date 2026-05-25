@@ -1,0 +1,1007 @@
+{
+  "graphOpts": {
+    "rankdir": "TB",
+    "nodesep": 50,
+    "ranksep": 50,
+    "marginx": 8,
+    "marginy": 8,
+    "width": 1141,
+    "height": 1461
+  },
+  "nodeCount": 32,
+  "edgeCount": 23,
+  "nodes": [
+    {
+      "id": "Platform_Top",
+      "value": {
+        "label": "Platform",
+        "width": 1125,
+        "height": 1245,
+        "x": 570.5,
+        "y": 730.5
+      },
+      "parent": null
+    },
+    {
+      "id": "Services_L2",
+      "value": {
+        "label": "Services Layer",
+        "width": 1085,
+        "height": 695,
+        "x": 570.5,
+        "y": 570.5
+      },
+      "parent": "Platform_Top"
+    },
+    {
+      "id": "Auth_L3",
+      "value": {
+        "label": "Auth Subsystem",
+        "width": 515,
+        "height": 515,
+        "x": 305.5,
+        "y": 635.5
+      },
+      "parent": "Services_L2"
+    },
+    {
+      "id": "TokenInner_L4",
+      "value": {
+        "label": "Token Internals",
+        "width": 220,
+        "height": 375,
+        "x": 178,
+        "y": 680.5
+      },
+      "parent": "Auth_L3"
+    },
+    {
+      "id": "TokenGen",
+      "value": {
+        "label": "Generate Token",
+        "width": 150,
+        "height": 50,
+        "x": 178,
+        "y": 558
+      },
+      "parent": "TokenInner_L4"
+    },
+    {
+      "id": "TokenSign",
+      "value": {
+        "label": "Sign Token",
+        "width": 150,
+        "height": 50,
+        "x": 178,
+        "y": 678
+      },
+      "parent": "TokenInner_L4"
+    },
+    {
+      "id": "TokenStore",
+      "value": {
+        "label": "Token Store",
+        "width": 140,
+        "height": 60,
+        "x": 178,
+        "y": 813
+      },
+      "parent": "TokenInner_L4"
+    },
+    {
+      "id": "SessionInner_L4",
+      "value": {
+        "label": "Session Internals",
+        "width": 220,
+        "height": 240,
+        "x": 433,
+        "y": 613
+      },
+      "parent": "Auth_L3"
+    },
+    {
+      "id": "SessionCreate",
+      "value": {
+        "label": "Create Session",
+        "width": 150,
+        "height": 50,
+        "x": 433,
+        "y": 558
+      },
+      "parent": "SessionInner_L4"
+    },
+    {
+      "id": "SessionCache",
+      "value": {
+        "label": "Session Cache",
+        "width": 140,
+        "height": 60,
+        "x": 433,
+        "y": 678
+      },
+      "parent": "SessionInner_L4"
+    },
+    {
+      "id": "AuthEntry",
+      "value": {
+        "label": "Auth Entry",
+        "width": 130,
+        "height": 40,
+        "x": 210.5,
+        "y": 423
+      },
+      "parent": "Auth_L3"
+    },
+    {
+      "id": "Payments_L3",
+      "value": {
+        "label": "Payment Subsystem",
+        "width": 510,
+        "height": 515,
+        "x": 838,
+        "y": 635.5
+      },
+      "parent": "Services_L2"
+    },
+    {
+      "id": "CardProc_L4",
+      "value": {
+        "label": "Card Processor",
+        "width": 220,
+        "height": 375,
+        "x": 963,
+        "y": 680.5
+      },
+      "parent": "Payments_L3"
+    },
+    {
+      "id": "CardValidate",
+      "value": {
+        "label": "Validate Card",
+        "width": 140,
+        "height": 80,
+        "x": 963,
+        "y": 558
+      },
+      "parent": "CardProc_L4"
+    },
+    {
+      "id": "CardCharge",
+      "value": {
+        "label": "Charge Card",
+        "width": 150,
+        "height": 50,
+        "x": 963,
+        "y": 678
+      },
+      "parent": "CardProc_L4"
+    },
+    {
+      "id": "CardLog",
+      "value": {
+        "label": "Charge Log",
+        "width": 140,
+        "height": 60,
+        "x": 963,
+        "y": 813
+      },
+      "parent": "CardProc_L4"
+    },
+    {
+      "id": "Refund_L4",
+      "value": {
+        "label": "Refund Processor",
+        "width": 230,
+        "height": 240,
+        "x": 718,
+        "y": 613
+      },
+      "parent": "Payments_L3"
+    },
+    {
+      "id": "RefundQueue",
+      "value": {
+        "label": "Refund Queue",
+        "width": 160,
+        "height": 50,
+        "x": 718,
+        "y": 558
+      },
+      "parent": "Refund_L4"
+    },
+    {
+      "id": "RefundExec",
+      "value": {
+        "label": "Execute Refund",
+        "width": 150,
+        "height": 50,
+        "x": 718,
+        "y": 678
+      },
+      "parent": "Refund_L4"
+    },
+    {
+      "id": "PaymentEntry",
+      "value": {
+        "label": "Payment Entry",
+        "width": 130,
+        "height": 40,
+        "x": 738,
+        "y": 423
+      },
+      "parent": "Payments_L3"
+    },
+    {
+      "id": "ServiceRouter",
+      "value": {
+        "label": "Service Router",
+        "width": 140,
+        "height": 80,
+        "x": 475.5,
+        "y": 288
+      },
+      "parent": "Services_L2"
+    },
+    {
+      "id": "Storage_L2",
+      "value": {
+        "label": "Storage Layer",
+        "width": 772.5,
+        "height": 270,
+        "x": 449.25,
+        "y": 1103
+      },
+      "parent": "Platform_Top"
+    },
+    {
+      "id": "PrimaryDB_L3",
+      "value": {
+        "label": "Primary DB",
+        "width": 497.5,
+        "height": 220,
+        "x": 331.75,
+        "y": 1103
+      },
+      "parent": "Storage_L2"
+    },
+    {
+      "id": "PrimaryWrite",
+      "value": {
+        "label": "Primary Writes",
+        "width": 140,
+        "height": 60,
+        "x": 193,
+        "y": 1048
+      },
+      "parent": "PrimaryDB_L3"
+    },
+    {
+      "id": "PrimaryRead",
+      "value": {
+        "label": "Primary Reads",
+        "width": 140,
+        "height": 60,
+        "x": 193,
+        "y": 1158
+      },
+      "parent": "PrimaryDB_L3"
+    },
+    {
+      "id": "CacheLayer_L3",
+      "value": {
+        "label": "Cache Layer",
+        "width": 210,
+        "height": 220,
+        "x": 710.5,
+        "y": 1103
+      },
+      "parent": "Storage_L2"
+    },
+    {
+      "id": "CacheHot",
+      "value": {
+        "label": "Hot Cache",
+        "width": 140,
+        "height": 60,
+        "x": 710.5,
+        "y": 1048
+      },
+      "parent": "CacheLayer_L3"
+    },
+    {
+      "id": "CacheCold",
+      "value": {
+        "label": "Cold Cache",
+        "width": 140,
+        "height": 60,
+        "x": 710.5,
+        "y": 1158
+      },
+      "parent": "CacheLayer_L3"
+    },
+    {
+      "id": "PlatformIngress",
+      "value": {
+        "label": "Ingress Gateway",
+        "width": 144,
+        "height": 40,
+        "x": 475.5,
+        "y": 153
+      },
+      "parent": "Platform_Top"
+    },
+    {
+      "id": "PlatformExit",
+      "value": {
+        "label": "Egress",
+        "width": 130,
+        "height": 40,
+        "x": 193,
+        "y": 1308
+      },
+      "parent": "Platform_Top"
+    },
+    {
+      "id": "Entry",
+      "value": {
+        "label": "API Entry",
+        "width": 140,
+        "height": 50,
+        "x": 475.5,
+        "y": 33
+      },
+      "parent": null
+    },
+    {
+      "id": "Done",
+      "value": {
+        "label": "Done",
+        "width": 140,
+        "height": 50,
+        "x": 193,
+        "y": 1428
+      },
+      "parent": null
+    }
+  ],
+  "edges": [
+    {
+      "v": "Entry",
+      "w": "PlatformIngress",
+      "value": {
+        "label": "",
+        "weight": 1,
+        "points": [
+          {
+            "x": 475.5,
+            "y": 58
+          },
+          {
+            "x": 475.5,
+            "y": 83
+          },
+          {
+            "x": 475.5,
+            "y": 108
+          },
+          {
+            "x": 475.5,
+            "y": 133
+          }
+        ]
+      }
+    },
+    {
+      "v": "TokenGen",
+      "w": "TokenSign",
+      "value": {
+        "label": "",
+        "weight": 1,
+        "points": [
+          {
+            "x": 178,
+            "y": 583
+          },
+          {
+            "x": 178,
+            "y": 623
+          },
+          {
+            "x": 178,
+            "y": 653
+          }
+        ]
+      }
+    },
+    {
+      "v": "TokenSign",
+      "w": "TokenStore",
+      "value": {
+        "label": "",
+        "weight": 1,
+        "points": [
+          {
+            "x": 178,
+            "y": 703
+          },
+          {
+            "x": 178,
+            "y": 733
+          },
+          {
+            "x": 178,
+            "y": 758
+          },
+          {
+            "x": 178,
+            "y": 783
+          }
+        ]
+      }
+    },
+    {
+      "v": "SessionCreate",
+      "w": "SessionCache",
+      "value": {
+        "label": "",
+        "weight": 1,
+        "points": [
+          {
+            "x": 433,
+            "y": 583
+          },
+          {
+            "x": 433,
+            "y": 623
+          },
+          {
+            "x": 433,
+            "y": 648
+          }
+        ]
+      }
+    },
+    {
+      "v": "AuthEntry",
+      "w": "TokenGen",
+      "value": {
+        "label": "",
+        "weight": 1,
+        "points": [
+          {
+            "x": 196.05555555555554,
+            "y": 443
+          },
+          {
+            "x": 178,
+            "y": 468
+          },
+          {
+            "x": 178,
+            "y": 493
+          },
+          {
+            "x": 178,
+            "y": 533
+          }
+        ]
+      }
+    },
+    {
+      "v": "AuthEntry",
+      "w": "SessionCreate",
+      "value": {
+        "label": "",
+        "weight": 1,
+        "points": [
+          {
+            "x": 275.5,
+            "y": 436.14606741573033
+          },
+          {
+            "x": 433,
+            "y": 468
+          },
+          {
+            "x": 433,
+            "y": 493
+          },
+          {
+            "x": 433,
+            "y": 533
+          }
+        ]
+      }
+    },
+    {
+      "v": "CardValidate",
+      "w": "CardCharge",
+      "value": {
+        "label": "ok",
+        "weight": 1,
+        "points": [
+          {
+            "x": 963,
+            "y": 598
+          },
+          {
+            "x": 963,
+            "y": 623
+          },
+          {
+            "x": 963,
+            "y": 653
+          }
+        ]
+      }
+    },
+    {
+      "v": "CardCharge",
+      "w": "CardLog",
+      "value": {
+        "label": "",
+        "weight": 1,
+        "points": [
+          {
+            "x": 963,
+            "y": 703
+          },
+          {
+            "x": 963,
+            "y": 733
+          },
+          {
+            "x": 963,
+            "y": 758
+          },
+          {
+            "x": 963,
+            "y": 783
+          }
+        ]
+      }
+    },
+    {
+      "v": "RefundQueue",
+      "w": "RefundExec",
+      "value": {
+        "label": "",
+        "weight": 1,
+        "points": [
+          {
+            "x": 718,
+            "y": 583
+          },
+          {
+            "x": 718,
+            "y": 623
+          },
+          {
+            "x": 718,
+            "y": 653
+          }
+        ]
+      }
+    },
+    {
+      "v": "PaymentEntry",
+      "w": "CardValidate",
+      "value": {
+        "label": "",
+        "weight": 1,
+        "points": [
+          {
+            "x": 803,
+            "y": 436
+          },
+          {
+            "x": 963,
+            "y": 468
+          },
+          {
+            "x": 963,
+            "y": 493
+          },
+          {
+            "x": 963,
+            "y": 518
+          }
+        ]
+      }
+    },
+    {
+      "v": "PaymentEntry",
+      "w": "RefundQueue",
+      "value": {
+        "label": "",
+        "weight": 1,
+        "points": [
+          {
+            "x": 729.1111111111111,
+            "y": 443
+          },
+          {
+            "x": 718,
+            "y": 468
+          },
+          {
+            "x": 718,
+            "y": 493
+          },
+          {
+            "x": 718,
+            "y": 533
+          }
+        ]
+      }
+    },
+    {
+      "v": "ServiceRouter",
+      "w": "AuthEntry",
+      "value": {
+        "label": "auth",
+        "weight": 1,
+        "points": [
+          {
+            "x": 405.5,
+            "y": 305.1698113207547
+          },
+          {
+            "x": 210.5,
+            "y": 353
+          },
+          {
+            "x": 210.5,
+            "y": 378
+          },
+          {
+            "x": 210.5,
+            "y": 403
+          }
+        ]
+      }
+    },
+    {
+      "v": "ServiceRouter",
+      "w": "PaymentEntry",
+      "value": {
+        "label": "payment",
+        "weight": 1,
+        "points": [
+          {
+            "x": 545.5,
+            "y": 305.3333333333333
+          },
+          {
+            "x": 738,
+            "y": 353
+          },
+          {
+            "x": 738,
+            "y": 378
+          },
+          {
+            "x": 738,
+            "y": 403
+          }
+        ]
+      }
+    },
+    {
+      "v": "PrimaryWrite",
+      "w": "PrimaryRead",
+      "value": {
+        "label": "",
+        "weight": 1,
+        "points": [
+          {
+            "x": 193,
+            "y": 1078
+          },
+          {
+            "x": 193,
+            "y": 1103
+          },
+          {
+            "x": 193,
+            "y": 1128
+          }
+        ]
+      }
+    },
+    {
+      "v": "CacheHot",
+      "w": "CacheCold",
+      "value": {
+        "label": "evict",
+        "weight": 1,
+        "points": [
+          {
+            "x": 710.5,
+            "y": 1078
+          },
+          {
+            "x": 710.5,
+            "y": 1103
+          },
+          {
+            "x": 710.5,
+            "y": 1128
+          }
+        ]
+      }
+    },
+    {
+      "v": "PlatformIngress",
+      "w": "ServiceRouter",
+      "value": {
+        "label": "",
+        "weight": 1,
+        "points": [
+          {
+            "x": 475.5,
+            "y": 173
+          },
+          {
+            "x": 475.5,
+            "y": 198
+          },
+          {
+            "x": 475.5,
+            "y": 223
+          },
+          {
+            "x": 475.5,
+            "y": 248
+          }
+        ]
+      }
+    },
+    {
+      "v": "TokenStore",
+      "w": "PrimaryWrite",
+      "value": {
+        "label": "",
+        "weight": 1,
+        "points": [
+          {
+            "x": 178,
+            "y": 843
+          },
+          {
+            "x": 178,
+            "y": 868
+          },
+          {
+            "x": 178,
+            "y": 893
+          },
+          {
+            "x": 178,
+            "y": 918
+          },
+          {
+            "x": 178,
+            "y": 943
+          },
+          {
+            "x": 178,
+            "y": 968
+          },
+          {
+            "x": 178,
+            "y": 993
+          },
+          {
+            "x": 184.8181818181818,
+            "y": 1018
+          }
+        ]
+      }
+    },
+    {
+      "v": "CardLog",
+      "w": "PrimaryWrite",
+      "value": {
+        "label": "",
+        "weight": 1,
+        "points": [
+          {
+            "x": 963,
+            "y": 843
+          },
+          {
+            "x": 963,
+            "y": 868
+          },
+          {
+            "x": 963,
+            "y": 893
+          },
+          {
+            "x": 518,
+            "y": 918
+          },
+          {
+            "x": 518,
+            "y": 943
+          },
+          {
+            "x": 518,
+            "y": 968
+          },
+          {
+            "x": 518,
+            "y": 993
+          },
+          {
+            "x": 263,
+            "y": 1036.1538461538462
+          }
+        ]
+      }
+    },
+    {
+      "v": "SessionCache",
+      "w": "CacheHot",
+      "value": {
+        "label": "",
+        "weight": 1,
+        "points": [
+          {
+            "x": 427.54545454545456,
+            "y": 708
+          },
+          {
+            "x": 423,
+            "y": 733
+          },
+          {
+            "x": 423,
+            "y": 758
+          },
+          {
+            "x": 423,
+            "y": 813
+          },
+          {
+            "x": 423,
+            "y": 868
+          },
+          {
+            "x": 423,
+            "y": 893
+          },
+          {
+            "x": 710.5,
+            "y": 918
+          },
+          {
+            "x": 710.5,
+            "y": 943
+          },
+          {
+            "x": 710.5,
+            "y": 968
+          },
+          {
+            "x": 710.5,
+            "y": 993
+          },
+          {
+            "x": 710.5,
+            "y": 1018
+          }
+        ]
+      }
+    },
+    {
+      "v": "PrimaryRead",
+      "w": "PlatformExit",
+      "value": {
+        "label": "",
+        "weight": 1,
+        "points": [
+          {
+            "x": 193,
+            "y": 1188
+          },
+          {
+            "x": 193,
+            "y": 1213
+          },
+          {
+            "x": 193,
+            "y": 1238
+          },
+          {
+            "x": 193,
+            "y": 1263
+          },
+          {
+            "x": 193,
+            "y": 1288
+          }
+        ]
+      }
+    },
+    {
+      "v": "PlatformExit",
+      "w": "Done",
+      "value": {
+        "label": "",
+        "weight": 1,
+        "points": [
+          {
+            "x": 193,
+            "y": 1328
+          },
+          {
+            "x": 193,
+            "y": 1353
+          },
+          {
+            "x": 193,
+            "y": 1378
+          },
+          {
+            "x": 193,
+            "y": 1403
+          }
+        ]
+      }
+    },
+    {
+      "v": "RefundExec",
+      "w": "TokenStore",
+      "value": {
+        "label": "audit",
+        "weight": 1,
+        "points": [
+          {
+            "x": 718,
+            "y": 703
+          },
+          {
+            "x": 718,
+            "y": 733
+          },
+          {
+            "x": 718,
+            "y": 758
+          },
+          {
+            "x": 248,
+            "y": 805.8703703703703
+          }
+        ]
+      }
+    },
+    {
+      "v": "SessionCache",
+      "w": "CardLog",
+      "value": {
+        "label": "sync",
+        "weight": 1,
+        "points": [
+          {
+            "x": 457.54545454545456,
+            "y": 708
+          },
+          {
+            "x": 478,
+            "y": 733
+          },
+          {
+            "x": 478,
+            "y": 758
+          },
+          {
+            "x": 893,
+            "y": 805.0618556701031
+          }
+        ]
+      }
+    }
+  ]
+}

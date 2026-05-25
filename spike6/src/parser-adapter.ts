@@ -1,21 +1,23 @@
 import type { IR, IRNode, IREdge, IRSubgraph, NodeShape } from './types.js';
 
-// Recursively find the first leaf (non-subgraph) descendant of a subgraph,
-// walking sg.nodes in declaration order. Mirrors Mermaid's findNonClusterChild
-// (dagre-KV5264BT.mjs:161) minus the findCommonEdges scoring — that scoring
-// exists for Mermaid's render-time splice case which we don't have, so
-// first-leaf is sufficient for crash avoidance. Returns undefined for an
-// empty subgraph.
-function firstLeafDescendant(
+// Recursively find a leaf (non-subgraph) descendant of a subgraph by walking
+// sg.nodes in declaration order. `pickLast=false` returns the FIRST leaf (used
+// as the anchor for INCOMING edges — drops you at the top of the cluster, the
+// way Mermaid's findNonClusterChild does); `pickLast=true` returns the LAST
+// leaf (used for OUTGOING edges so they leave from the bottom of the cluster).
+// Returns undefined for an empty subgraph.
+function leafDescendant(
   sgId: string,
   rawSubgraphsById: Map<string, any>,
   subgraphIds: Set<string>,
+  pickLast: boolean,
 ): string | undefined {
   const sg = rawSubgraphsById.get(sgId);
   if (!sg) return undefined;
-  for (const childId of sg.nodes) {
+  const order = pickLast ? [...sg.nodes].reverse() : sg.nodes;
+  for (const childId of order) {
     if (subgraphIds.has(childId)) {
-      const inner = firstLeafDescendant(childId, rawSubgraphsById, subgraphIds);
+      const inner = leafDescendant(childId, rawSubgraphsById, subgraphIds, pickLast);
       if (inner) return inner;
     } else {
       return childId;
@@ -77,6 +79,13 @@ export async function parseToIR(source: string): Promise<IR> {
 
   const nodes: IRNode[] = [];
   vertexMap.forEach((v: any, id: string) => {
+    // Mermaid's flowDb registers a phantom vertex for any id that appears as
+    // an edge endpoint, including subgraph ids (e.g. `Entry --> Platform`
+    // where Platform is also a `subgraph Platform [...]` block). Skip those
+    // — they're already represented as IRSubgraph entries; emitting a leaf
+    // node with the same id would render a duplicate shape on top of the
+    // cluster's first leaf.
+    if (subgraphIds.has(id)) return;
     nodes.push({
       id,
       label: v.text || id,
@@ -92,19 +101,19 @@ export async function parseToIR(source: string): Promise<IR> {
     style: e.stroke === 'dotted' ? 'dotted' : 'solid',
   }));
 
-  // Rewrite edges whose endpoint is a subgraph id — @dagrejs/dagre's compound
-  // layout throws `TypeError: Cannot set properties of undefined (setting
-  // 'rank')` when an edge endpoint is a compound node. Reroute to the first
-  // leaf descendant of the subgraph; drop the edge if the subgraph is empty.
-  // Uses rawSubgraphs (which carry the full .nodes child list) rather than
-  // the mapped IRSubgraph[] (which only keeps leaf children).
+  // Rewrite edges whose endpoint is a subgraph id — dagre's compound layout
+  // throws on compound-node endpoints. Anchor to the cluster's BOTTOM leaf for
+  // outgoing edges (so the edge leaves from the bottom of the cluster) and the
+  // cluster's TOP leaf for incoming edges (so the edge enters at the top). This
+  // mirrors Mermaid's effective behavior on `cluster --> node` / `node -->
+  // cluster` patterns. Drop the edge if the subgraph is empty.
   const rawSubgraphsById = new Map<string, any>(rawSubgraphs.map((sg: any) => [sg.id, sg]));
   const rewrittenEdges: IREdge[] = [];
   for (const e of edges) {
     let { from, to } = e;
     let rewrote = false;
     if (subgraphIds.has(from)) {
-      const leaf = firstLeafDescendant(from, rawSubgraphsById, subgraphIds);
+      const leaf = leafDescendant(from, rawSubgraphsById, subgraphIds, true);
       if (!leaf) {
         console.warn(`[parser-adapter] dropping edge from empty subgraph "${from}" → "${to}"`);
         continue;
@@ -113,7 +122,7 @@ export async function parseToIR(source: string): Promise<IR> {
       rewrote = true;
     }
     if (subgraphIds.has(to)) {
-      const leaf = firstLeafDescendant(to, rawSubgraphsById, subgraphIds);
+      const leaf = leafDescendant(to, rawSubgraphsById, subgraphIds, false);
       if (!leaf) {
         console.warn(`[parser-adapter] dropping edge from "${e.from}" → empty subgraph "${to}"`);
         continue;
