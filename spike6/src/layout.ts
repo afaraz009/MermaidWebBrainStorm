@@ -12,48 +12,101 @@ function ceilTo(v: number, step: number): number {
   return Math.ceil(v / step) * step;
 }
 
-// Per-shape canonical sizes. Calibrated against Mermaid v11's actual dagre
-// input on fixture200.mmd (captured 2026-05-25 via the `Graph before layout`
-// log line — see spike6_mermaid-graph-200.json). Mermaid measures real text
-// bbox + padding:15 per side; we approximate with `labelLen * 10 + 30` and
-// fall back to a base that matches Mermaid's minimum observed dims for short
-// labels.
-//
-// Sample Mermaid values for fixture200 leaves: squareRect "SMS 1" (5 chars) =
-// 100x54, "Edge Gateway" (12 chars) = 162x54. cylinder "SMS 5" (5 chars) =
-// 55x62, "Telemetry 10" (12 chars) = 108x74. lean_right "SMS 7" (5 chars) =
-// 94x39, "Telemetry 7" (11 chars) = 139x39.
-const SHAPE_SIZES: Record<NodeShape, { w: number; h: number }> = {
-  rect:                { w: 100, h: 54 },
-  round:               { w: 100, h: 54 },
-  stadium:             { w: 140, h: 50 },
-  subroutine:          { w: 150, h: 50 },
-  cylinder:            { w: 55,  h: 62 },
-  circle:              { w: 90,  h: 90 },
-  'double-circle':     { w: 110, h: 110 },
-  diamond:             { w: 140, h: 80 },
-  hexagon:             { w: 150, h: 60 },
-  parallelogram:       { w: 94,  h: 39 },
-  'parallelogram-alt': { w: 94,  h: 39 },
-  trapezoid:           { w: 160, h: 60 },
-  'trapezoid-alt':     { w: 160, h: 60 },
-  asymmetric:          { w: 150, h: 50 },
-  ellipse:             { w: 160, h: 60 },
+// Match Mermaid v11's label rendering font so our measured text widths line
+// up with what Mermaid's dagre input contains. Renderer.ts must use the same
+// font for the visible label text or the rendered text will float in an
+// oversized box (or overflow an undersized one).
+const LABEL_FONT_SIZE = 16;
+const LABEL_FONT_FAMILY = '"trebuchet ms", verdana, arial, sans-serif';
+
+// Hidden offscreen HTML span reused for every measurement. Using HTML (not
+// SVG <text>) because Mermaid renders labels inside foreignObject HTML and
+// sizes nodes from getBoundingClientRect — which returns the line-box height
+// (~24 at 16px Trebuchet MS), whereas SVG getBBox returns the tight glyph
+// height (~18.67 for the same text). The 5px difference shows up as ~5px
+// shortfall in cylinder heights when using SVG measurement.
+let _measureSpan: HTMLSpanElement | null = null;
+
+function getMeasureSpan(): HTMLSpanElement {
+  if (_measureSpan) return _measureSpan;
+  _measureSpan = document.createElement('span');
+  _measureSpan.style.position = 'absolute';
+  _measureSpan.style.visibility = 'hidden';
+  _measureSpan.style.left = '-9999px';
+  _measureSpan.style.top = '0';
+  _measureSpan.style.whiteSpace = 'nowrap';
+  _measureSpan.style.fontSize = `${LABEL_FONT_SIZE}px`;
+  _measureSpan.style.fontFamily = LABEL_FONT_FAMILY;
+  // Mermaid wraps labels in a <p>, which gives a line-box height of 1.5 * fontSize
+  // (24px at 16px font). Default span bbox returns tight glyph height (~18.67),
+  // which under-measures by ~5 px and shows up as short cylinder caps. Forcing
+  // line-height here matches Mermaid's effective text height.
+  _measureSpan.style.lineHeight = '1.5';
+  _measureSpan.style.display = 'inline-block';
+  document.body.appendChild(_measureSpan);
+  return _measureSpan;
+}
+
+function measureLabel(label: string): { w: number; h: number } {
+  if (typeof document === 'undefined') {
+    // SSR / test fallback.
+    return { w: label.length * 9.5, h: 24 };
+  }
+  const sp = getMeasureSpan();
+  sp.textContent = label || ' ';
+  const bb = sp.getBoundingClientRect();
+  return { w: bb.width, h: bb.height };
+}
+
+// Per-shape sizing calibrated against Mermaid v11's actual dagre input
+// dimensions (`Graph before layout` log entry) on fixture.mmd + fixture200.mmd
+// captured 2026-05-25. Each shape gets a SEPARATE horizontal padding because
+// Mermaid uses different padding per shape — derived empirically as
+// `(Mermaid dagre width - HTML text bbox width) / 2`:
+//   rect/round       30   (Process Node 153.84 - text 93.84 = 60)
+//   diamond          27   (Decision Node 154.66 - text 100.66 = 54)
+//   parallelograms   27   (Input Output 145.89 - text 91.88 = 54)
+//   subroutine       15.5 (Subroutine 108.28 - text 77.28 = 31)
+//   stadium          12.5 (Start 59.74 - text 35.01 = 24.73)
+//   asymmetric       12.5 (Asymmetric Node 150.16 - text 125.40 = 24.76)
+//   hexagon          17   (Hexagon Node 136.74 - text 102.24 = 34.5)
+//   cylinder         7.5  (Database 80.5 - text 65.5 = 15)
+//   double-circle    15   (Circle Node 112.98 - text 82.98 = 30)
+// Height policy:
+//   - number     : fixed Mermaid height (stadium=39, rect=54, etc.)
+//   - 'square'   : w = h (diamond, circle, double-circle inscribe text in a
+//                  square so the rotated rhombus / round shape has room)
+//   - 'cylinder' : Mermaid expands cylinder height with width to keep the
+//                  elliptical caps proportional — `textH + 30 + w * 0.18`
+//                  matches Database(80.5,68.38), Storage(69,65.68), and
+//                  fixture200 Telemetry 10(108,73.86) within ~1px.
+const SHAPE_BASE: Record<NodeShape, { baseW: number; h: number | 'square' | 'cylinder'; pad: number }> = {
+  rect:                { baseW: 100, h: 54,         pad: 30 },
+  round:               { baseW: 100, h: 54,         pad: 30 },
+  stadium:             { baseW: 50,  h: 39,         pad: 12.5 },
+  subroutine:          { baseW: 80,  h: 39,         pad: 15.5 },
+  cylinder:            { baseW: 55,  h: 'cylinder', pad: 7.5 },
+  circle:              { baseW: 50,  h: 'square',   pad: 15 },
+  'double-circle':     { baseW: 50,  h: 'square',   pad: 15 },
+  diamond:             { baseW: 50,  h: 'square',   pad: 27 },
+  hexagon:             { baseW: 80,  h: 39,         pad: 17 },
+  parallelogram:       { baseW: 50,  h: 39,         pad: 27 },
+  'parallelogram-alt': { baseW: 50,  h: 39,         pad: 27 },
+  trapezoid:           { baseW: 100, h: 60,         pad: 27 },
+  'trapezoid-alt':     { baseW: 100, h: 60,         pad: 27 },
+  asymmetric:          { baseW: 80,  h: 39,         pad: 12.5 },
+  ellipse:             { baseW: 100, h: 39,         pad: 25 },
 };
 
-// Resolve a node's bounding-box size. Width approximates Mermaid's text-bbox
-// formula (labelLen * 10 + 30 ≈ avg char width 10px + padding 15 per side);
-// floor at the shape's canonical base so short labels still fill the shape.
-function sizeForShape(shape: NodeShape, labelLen: number): { w: number; h: number } {
-  const base = SHAPE_SIZES[shape] ?? SHAPE_SIZES.rect;
-  const textW = labelLen * 10 + 30;
-  if (shape === 'circle' || shape === 'double-circle') {
-    // Keep these as squares so the inscribed circle stays a circle even when
-    // the label is long.
-    const d = Math.max(base.w, textW);
-    return { w: d, h: d };
-  }
-  return { w: Math.max(base.w, textW), h: base.h };
+function sizeForShape(shape: NodeShape, label: string): { w: number; h: number } {
+  const cfg = SHAPE_BASE[shape] ?? SHAPE_BASE.rect;
+  const { w: textW, h: textH } = measureLabel(label);
+  const w = Math.max(cfg.baseW, textW + 2 * cfg.pad);
+  let h: number;
+  if (cfg.h === 'square') h = w;
+  else if (cfg.h === 'cylinder') h = textH + 30 + w * 0.18;
+  else h = cfg.h;
+  return { w, h };
 }
 
 // Mermaid-faithful node insertion order for dagre. Returns the IR's nodes in
@@ -165,7 +218,7 @@ export function layout(ir: IR): IR {
     }
     const n = nodeById.get(id);
     if (n) {
-      const { w: rawW, h: rawH } = sizeForShape(n.shape, n.label.length);
+      const { w: rawW, h: rawH } = sizeForShape(n.shape, n.label);
       const width = snap(rawW);
       const height = snap(rawH);
       if (n.pinned && n.x != null && n.y != null) {

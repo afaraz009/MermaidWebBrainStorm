@@ -780,7 +780,10 @@ export function renderFull(ir: IR, mountEl: SVGElement, interactive = false, ori
     text.setAttribute('y', String(n.height / 2));
     text.setAttribute('text-anchor', 'middle');
     text.setAttribute('dominant-baseline', 'middle');
-    text.setAttribute('font-size', '13');
+    // Match the font layout.ts uses for label measurement. Mismatched font
+    // would mean nodes are sized to fit a different text than what renders.
+    text.setAttribute('font-size', '16');
+    text.setAttribute('font-family', '"trebuchet ms", verdana, arial, sans-serif');
     text.setAttribute('fill', '#1a1a2e');
     text.textContent = n.label;
 
