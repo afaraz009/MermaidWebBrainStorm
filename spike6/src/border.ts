@@ -152,14 +152,18 @@ export function trapezoidAltVerts(cx: number, cy: number, hw: number, hh: number
 export const ASYM_NOTCH = 0.25; // size of the left-side "flag" notch
 
 export function asymmetricVerts(cx: number, cy: number, hw: number, hh: number): { x: number; y: number }[] {
-  // Mermaid's >text] shape: rectangle with a chevron-notched left side.
+  // Mermaid's >text] shape: rectangle with a chevron-notch CARVED INTO the
+  // left side — the apex points INWARD (toward the body), not outward. The
+  // top-left and bottom-left corners sit at the leftmost x; the apex is inset
+  // by `notch` along the horizontal midline. Verified against Mermaid v11
+  // path geometry (top-left/bottom-left at leftmost x, apex inset).
   const notch = hw * ASYM_NOTCH;
   return [
-    { x: cx - hw + notch, y: cy - hh }, // top, just right of the notch
+    { x: cx - hw,         y: cy - hh }, // top-left at leftmost x
     { x: cx + hw,         y: cy - hh },
     { x: cx + hw,         y: cy + hh },
-    { x: cx - hw + notch, y: cy + hh },
-    { x: cx - hw,         y: cy      }, // notch apex
+    { x: cx - hw,         y: cy + hh }, // bottom-left at leftmost x
+    { x: cx - hw + notch, y: cy      }, // apex inset inward
   ];
 }
 
