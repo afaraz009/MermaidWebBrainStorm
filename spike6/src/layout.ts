@@ -12,40 +12,41 @@ function ceilTo(v: number, step: number): number {
   return Math.ceil(v / step) * step;
 }
 
-// Per-shape canonical sizes. These are the "gallery" sizes — every node of a
-// given shape renders at this fixed footprint, regardless of label length.
-// Longer labels still get a width bump (Math.max with the text width) so they
-// don't overflow the shape, but the *base* dimensions are constant so any
-// diagram renders with the same look as the shape gallery.
+// Per-shape canonical sizes. Calibrated against Mermaid v11's actual dagre
+// input on fixture200.mmd (captured 2026-05-25 via the `Graph before layout`
+// log line — see spike6_mermaid-graph-200.json). Mermaid measures real text
+// bbox + padding:15 per side; we approximate with `labelLen * 10 + 30` and
+// fall back to a base that matches Mermaid's minimum observed dims for short
+// labels.
 //
-// Numbers chosen to match the gallery proportions; tweak here to retune
-// everywhere.
+// Sample Mermaid values for fixture200 leaves: squareRect "SMS 1" (5 chars) =
+// 100x54, "Edge Gateway" (12 chars) = 162x54. cylinder "SMS 5" (5 chars) =
+// 55x62, "Telemetry 10" (12 chars) = 108x74. lean_right "SMS 7" (5 chars) =
+// 94x39, "Telemetry 7" (11 chars) = 139x39.
 const SHAPE_SIZES: Record<NodeShape, { w: number; h: number }> = {
-  rect:                { w: 130, h: 40 },
-  round:               { w: 130, h: 40 },
+  rect:                { w: 100, h: 54 },
+  round:               { w: 100, h: 54 },
   stadium:             { w: 140, h: 50 },
   subroutine:          { w: 150, h: 50 },
-  cylinder:            { w: 140, h: 60 },
+  cylinder:            { w: 55,  h: 62 },
   circle:              { w: 90,  h: 90 },
   'double-circle':     { w: 110, h: 110 },
   diamond:             { w: 140, h: 80 },
   hexagon:             { w: 150, h: 60 },
-  parallelogram:       { w: 160, h: 50 },
-  'parallelogram-alt': { w: 160, h: 50 },
+  parallelogram:       { w: 94,  h: 39 },
+  'parallelogram-alt': { w: 94,  h: 39 },
   trapezoid:           { w: 160, h: 60 },
   'trapezoid-alt':     { w: 160, h: 60 },
   asymmetric:          { w: 150, h: 50 },
   ellipse:             { w: 160, h: 60 },
 };
 
-// Resolve a node's bounding-box size. Looks up the canonical size for the
-// shape; for longer-than-default labels, expands the width just enough to
-// keep the label inside (height stays canonical).
+// Resolve a node's bounding-box size. Width approximates Mermaid's text-bbox
+// formula (labelLen * 10 + 30 ≈ avg char width 10px + padding 15 per side);
+// floor at the shape's canonical base so short labels still fill the shape.
 function sizeForShape(shape: NodeShape, labelLen: number): { w: number; h: number } {
   const base = SHAPE_SIZES[shape] ?? SHAPE_SIZES.rect;
-  // Rough text footprint: 8px/char + 24px padding. Only widens the box; never
-  // shrinks it below the canonical size.
-  const textW = labelLen * 8 + 24;
+  const textW = labelLen * 10 + 30;
   if (shape === 'circle' || shape === 'double-circle') {
     // Keep these as squares so the inscribed circle stays a circle even when
     // the label is long.
