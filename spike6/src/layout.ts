@@ -55,41 +55,68 @@ function sizeForShape(shape: NodeShape, labelLen: number): { w: number; h: numbe
   return { w: Math.max(base.w, textW), h: base.h };
 }
 
-// Mirror of Mermaid's sortNodesByHierarchy + sorter
-// (dagre-KV5264BT.mjs:370-382). Walks the IR's subgraph + leaf-node hierarchy
-// DFS-style and returns ids in parent-then-children order. Used as the
-// insertion order for g.setNode so dagre's dfsFAS picks back-edges the same
-// way Mermaid does (Mermaid feeds dagre nodes in this same order).
-//
-// Mermaid's `sorter` walks a single child list per node (the graph already
-// encodes hierarchy via setParent). Our IR keeps subgraph-children and
-// leaf-children in separate arrays, so we emit subgraph descendants first,
-// then leaf children — same end ordering Mermaid produces given how it
-// builds the graph (subgraphs get setParent before leaves).
+// Mermaid-faithful node insertion order for dagre. Returns the IR's nodes in
+// the same sequence Mermaid v11 inserts them into its outer compound graph
+// (verified empirically against the `Adjusted Graph` log entry from
+// mermaid-debug.html for fixture_nested.mmd, 2026-05-25). The order affects
+// dagre's barycenter tiebreaker when sibling clusters have no edges between
+// them at their level — see the in-function comment for the load-bearing
+// detail (reverse sibling order at every cluster level).
 function sortNodesByHierarchy(ir: IR): string[] {
-  const sgChildren = new Map<string | undefined, string[]>();
+  // Mermaid's `Adjusted Graph` for fixture_nested.mmd (captured 2026-05-25
+  // via mermaid-debug.html) shows TWO surprising properties of its node
+  // insertion order:
+  //   1. ALL cluster nodes are inserted first, in a single DFS pass through
+  //      the cluster hierarchy, BEFORE any leaf nodes.
+  //   2. Subgraph siblings are visited in REVERSE declaration order — Mermaid
+  //      visits Storage_L2 (declared 2nd) before Services_L2 (1st), and
+  //      CacheLayer_L3 (declared 2nd) before PrimaryDB_L3 (1st), at every
+  //      level of the hierarchy.
+  // Property (2) is the empirical source of the Storage_L2 L/R divergence:
+  // when two clusters have no edges between them at their level (Storage_L2's
+  // case), dagre's barycenter tiebreaker falls back to insertion order. Cache
+  // being inserted first puts CacheLayer LEFT — matching Mermaid v11.
+  // Leaves are emitted after all clusters via a second DFS in declaration
+  // order (mirrors the leaf order observed in Mermaid's dump).
+  const subgraphsByParent = new Map<string | undefined, string[]>();
   for (const sg of ir.subgraphs) {
     const key = sg.parent;
-    if (!sgChildren.has(key)) sgChildren.set(key, []);
-    sgChildren.get(key)!.push(sg.id);
+    if (!subgraphsByParent.has(key)) subgraphsByParent.set(key, []);
+    subgraphsByParent.get(key)!.push(sg.id);
   }
-  const nodeChildren = new Map<string | undefined, string[]>();
+  for (const list of subgraphsByParent.values()) list.reverse();
+
+  const leavesByParent = new Map<string | undefined, string[]>();
   for (const n of ir.nodes) {
     const key = n.parent;
-    if (!nodeChildren.has(key)) nodeChildren.set(key, []);
-    nodeChildren.get(key)!.push(n.id);
+    if (!leavesByParent.has(key)) leavesByParent.set(key, []);
+    leavesByParent.get(key)!.push(n.id);
   }
+
   const out: string[] = [];
-  function emit(parent: string | undefined): void {
-    for (const sgId of sgChildren.get(parent) ?? []) {
+
+  function emitClusters(parent: string | undefined): void {
+    for (const sgId of subgraphsByParent.get(parent) ?? []) {
       out.push(sgId);
-      emit(sgId);
-    }
-    for (const nId of nodeChildren.get(parent) ?? []) {
-      out.push(nId);
+      emitClusters(sgId);
     }
   }
-  emit(undefined);
+  function emitLeaves(parent: string | undefined): void {
+    for (const leafId of leavesByParent.get(parent) ?? []) {
+      out.push(leafId);
+    }
+    // Recurse into subgraphs in DECLARATION order (NOT reversed) — Mermaid's
+    // leaf section visits clusters in declaration order, opposite of how it
+    // orders the cluster section. Use ir.subgraphs filter to get declaration
+    // order rather than the reversed subgraphsByParent map.
+    for (const sg of ir.subgraphs) {
+      if ((sg.parent ?? null) === (parent ?? null)) emitLeaves(sg.id);
+    }
+  }
+
+  emitClusters(undefined);
+  emitLeaves(undefined);
+
   return out;
 }
 
