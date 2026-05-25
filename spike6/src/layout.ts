@@ -2,8 +2,8 @@
 // Same graphlib API; barycenter/tie-breaking may differ on branch ordering.
 import * as graphlib from 'dagre-d3-es/src/graphlib/index.js';
 import { layout as dagreLayout } from 'dagre-d3-es/src/dagre/index.js';
-import type { IR, NodeShape } from './types.js';
-import { clipToBorder } from './border.js';
+import type { IR, IRNode, NodeShape } from './types.js';
+import { clipToBorder, clipToClusterRect } from './border.js';
 import { astarSettings } from './astarSettings.js';
 
 // Round up to a multiple of `step`. Used to size nodes and snap positions to
@@ -47,7 +47,7 @@ function getMeasureSpan(): HTMLSpanElement {
   return _measureSpan;
 }
 
-function measureLabel(label: string): { w: number; h: number } {
+export function measureLabel(label: string): { w: number; h: number } {
   if (typeof document === 'undefined') {
     // SSR / test fallback.
     return { w: label.length * 9.5, h: 24 };
@@ -56,6 +56,53 @@ function measureLabel(label: string): { w: number; h: number } {
   sp.textContent = label || ' ';
   const bb = sp.getBoundingClientRect();
   return { w: bb.width, h: bb.height };
+}
+
+// Edge-label wrap width and line-height match Mermaid's `createText` defaults
+// (mermaid.js:40651 / :40549). Live here (not renderer.ts) because dagre also
+// needs edge label dimensions when allocating space between nodes — otherwise
+// a wide label gets squashed by tight node spacing. Renderer imports the same
+// helpers so the rendered rect matches the box dagre reserved.
+export const EDGE_LABEL_WRAP_WIDTH = 200;
+export const EDGE_LABEL_LINE_HEIGHT_EM = 1.1;
+const EDGE_LABEL_PAD_X = 4;
+const EDGE_LABEL_PAD_Y = 0;
+
+export function wrapEdgeLabel(text: string): string[] {
+  if (!text) return [];
+  const { w: fullW } = measureLabel(text);
+  if (fullW <= EDGE_LABEL_WRAP_WIDTH) return [text];
+  const words = text.split(/\s+/).filter(Boolean);
+  const lines: string[] = [];
+  let current = '';
+  for (const word of words) {
+    const trial = current ? `${current} ${word}` : word;
+    if (measureLabel(trial).w <= EDGE_LABEL_WRAP_WIDTH) {
+      current = trial;
+    } else {
+      if (current) lines.push(current);
+      current = word;
+    }
+  }
+  if (current) lines.push(current);
+  return lines.length > 0 ? lines : [text];
+}
+
+export function edgeLabelSize(label: string): { w: number; h: number } {
+  const lines = wrapEdgeLabel(label);
+  if (lines.length === 0) return { w: 0, h: 0 };
+  let maxW = 0;
+  let lineH = 0;
+  for (const line of lines) {
+    const m = measureLabel(line);
+    if (m.w > maxW) maxW = m.w;
+    if (m.h > lineH) lineH = m.h;
+  }
+  const totalH = lineH + lineH * EDGE_LABEL_LINE_HEIGHT_EM * (lines.length - 1);
+  return {
+    w: maxW + EDGE_LABEL_PAD_X * 2,
+    h: totalH + EDGE_LABEL_PAD_Y * 2,
+  };
 }
 
 // Per-shape sizing calibrated against Mermaid v11's actual dagre input
@@ -239,7 +286,10 @@ export function layout(ir: IR): IR {
   }
 
   for (const e of ir.edges) {
-    g.setEdge(e.from, e.to, { label: e.label || '', weight: 1 });
+    {
+      const { w, h } = e.label ? edgeLabelSize(e.label) : { w: 0, h: 0 };
+      g.setEdge(e.from, e.to, { label: e.label || '', weight: 1, width: w, height: h });
+    }
   }
 
   // Temporary diagnostic: when `?dump=1`, capture our dagre-d3-es input graph
@@ -251,6 +301,28 @@ export function layout(ir: IR): IR {
   }
 
   dagreLayout(g, {});
+
+  // Pass-1.5: re-anchor cluster-endpoint edges to the actual extremal leaf.
+  // findNonClusterChild (parser-adapter) uses a declaration-order heuristic
+  // that doesn't always match dagre's final ranking — e.g. cyc3's
+  // Productivity→Halt rewrites to Rev_Comment (top of Reviewer, which
+  // sibling-reverse + cycle puts at the TOP of the cluster), so Halt ends up
+  // at Editor's rank instead of below the whole cluster. Now that pass-1
+  // has settled positions, pick the true bottom-most leaf (max Y) for
+  // outgoing cluster edges and the true top-most leaf (min Y) for incoming
+  // ones, and re-run dagre with the corrected edges. The re-run is cheap on
+  // our fixture sizes (≤200 nodes) and converges in one extra pass.
+  const edgesChanged = reanchorClusterEdges(ir, g);
+  if (edgesChanged) {
+    for (const e of g.edges()) g.removeEdge(e);
+    for (const e of ir.edges) {
+      {
+      const { w, h } = e.label ? edgeLabelSize(e.label) : { w: 0, h: 0 };
+      g.setEdge(e.from, e.to, { label: e.label || '', weight: 1, width: w, height: h });
+    }
+    }
+    dagreLayout(g, {});
+  }
 
   // Write positions back to IR nodes. When A* is on, snap each non-pinned
   // node so its left edge falls on a cell line — round (x - width/2) to a
@@ -277,7 +349,11 @@ export function layout(ir: IR): IR {
   }
 
   // Write edge waypoints, border-clipping the first and last point so
-  // endpoints sit on the node edge rather than at the center.
+  // endpoints sit on the node edge rather than at the center. For edges
+  // whose endpoint was rewritten from a subgraph id (fromCluster/toCluster
+  // stamped by parser-adapter.ts), clip to the cluster's drawn bbox instead
+  // of the leaf shape's outline — so the edge visually terminates at the
+  // cluster border the user sees, matching Mermaid's behavior.
   for (const e of ir.edges) {
     const ge = g.edge(e.from, e.to);
     if (ge && ge.points) {
@@ -285,8 +361,37 @@ export function layout(ir: IR): IR {
       const fromNode = ir.nodes.find(n => n.id === e.from);
       const toNode   = ir.nodes.find(n => n.id === e.to);
       if (pts.length >= 2 && fromNode && toNode) {
-        pts[0] = clipToBorder(fromNode, pts[1]);
-        pts[pts.length - 1] = clipToBorder(toNode, pts[pts.length - 2]);
+        // Start endpoint: cluster border if rewritten from subgraph, else leaf shape.
+        if (e.fromCluster) {
+          const bbox = clusterBboxFromIR(e.fromCluster, ir);
+          if (bbox) {
+            // Drop dagre waypoints that fall INSIDE the cluster — they were
+            // routed for the leaf-anchored edge and cause curveBasis loops
+            // once we move pts[0] out to the cluster border. Keep popping
+            // pts[1] while it lies inside the cluster bbox; what remains is
+            // the first exterior waypoint dagre chose.
+            while (pts.length > 2 && pointInBbox(pts[1], bbox)) pts.splice(1, 1);
+            pts[0] = clipToClusterRect(bbox, pts[1]);
+          } else {
+            pts[0] = clipToBorder(fromNode, pts[1]);  // fallback if bbox unavailable
+          }
+        } else {
+          pts[0] = clipToBorder(fromNode, pts[1]);
+        }
+        // End endpoint: same dual path.
+        if (e.toCluster) {
+          const bbox = clusterBboxFromIR(e.toCluster, ir);
+          if (bbox) {
+            while (pts.length > 2 && pointInBbox(pts[pts.length - 2], bbox)) {
+              pts.splice(pts.length - 2, 1);
+            }
+            pts[pts.length - 1] = clipToClusterRect(bbox, pts[pts.length - 2]);
+          } else {
+            pts[pts.length - 1] = clipToBorder(toNode, pts[pts.length - 2]);
+          }
+        } else {
+          pts[pts.length - 1] = clipToBorder(toNode, pts[pts.length - 2]);
+        }
       }
       // Ensure at least 3 points for curveBasis to produce a smooth curve.
       if (pts.length === 2) {
@@ -298,6 +403,105 @@ export function layout(ir: IR): IR {
   }
 
   return ir;
+}
+
+// Mirror of renderer.ts:computeSubgraphBboxes. Computes the cluster's DRAWN
+// bbox from its descendant leaves' positions, recursively, including the same
+// PADDING and label-offset (+10 on Y) the renderer uses. Returns null if the
+// cluster is empty or its leaves haven't been positioned yet. Kept in sync
+// with the renderer so cluster-anchored edges clip to exactly the rectangle
+// the user sees on screen.
+const CLUSTER_BBOX_PADDING = 20;
+
+// Inclusive bbox containment — used by the edge write-back to discard
+// dagre waypoints inside a cluster we're about to clip the endpoint out of.
+function pointInBbox(
+  p: { x: number; y: number },
+  b: { x: number; y: number; w: number; h: number },
+): boolean {
+  return p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h;
+}
+
+// All deep-descendant leaves of a cluster, recursively. Mutates `out`.
+function collectClusterLeaves(clusterId: string, ir: IR, out: IRNode[]): void {
+  for (const n of ir.nodes) {
+    if (n.parent === clusterId) out.push(n);
+  }
+  for (const sg of ir.subgraphs) {
+    if (sg.parent === clusterId) collectClusterLeaves(sg.id, ir, out);
+  }
+}
+
+// Pass-1.5 re-anchor. For every IR edge stamped with fromCluster/toCluster,
+// find the bottom-most (outgoing) or top-most (incoming) leaf of that cluster
+// by actual Y coord after pass-1 dagre. If the current anchor isn't extremal,
+// swap and signal that the graph needs re-running. Returns true if anything
+// changed.
+function reanchorClusterEdges(ir: IR, g: any): boolean {
+  let changed = false;
+  const leafCache = new Map<string, IRNode[]>();
+  function leavesOf(id: string): IRNode[] {
+    let l = leafCache.get(id);
+    if (l) return l;
+    l = [];
+    collectClusterLeaves(id, ir, l);
+    leafCache.set(id, l);
+    return l;
+  }
+  // Read Y from g (dagre's output) rather than n.y, since IR write-back
+  // hasn't happened yet at this point.
+  const yOf = (id: string): number => {
+    const gn = g.node(id);
+    return gn ? gn.y : 0;
+  };
+  for (const e of ir.edges) {
+    if (e.fromCluster) {
+      const leaves = leavesOf(e.fromCluster);
+      if (leaves.length > 0) {
+        const bottom = leaves.reduce((a, b) => (yOf(a.id) > yOf(b.id) ? a : b));
+        if (bottom.id !== e.from) { e.from = bottom.id; changed = true; }
+      }
+    }
+    if (e.toCluster) {
+      const leaves = leavesOf(e.toCluster);
+      if (leaves.length > 0) {
+        const top = leaves.reduce((a, b) => (yOf(a.id) < yOf(b.id) ? a : b));
+        if (top.id !== e.to) { e.to = top.id; changed = true; }
+      }
+    }
+  }
+  return changed;
+}
+function clusterBboxFromIR(
+  clusterId: string,
+  ir: IR,
+): { x: number; y: number; w: number; h: number } | null {
+  const sg = ir.subgraphs.find(s => s.id === clusterId);
+  if (!sg) return null;
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const childId of sg.children) {
+    const n = ir.nodes.find(nn => nn.id === childId);
+    if (!n || n.x == null || n.y == null || n.width == null || n.height == null) continue;
+    minX = Math.min(minX, n.x - n.width / 2);
+    minY = Math.min(minY, n.y - n.height / 2);
+    maxX = Math.max(maxX, n.x + n.width / 2);
+    maxY = Math.max(maxY, n.y + n.height / 2);
+  }
+  for (const nested of ir.subgraphs.filter(s => s.parent === clusterId)) {
+    const nb = clusterBboxFromIR(nested.id, ir);
+    if (!nb) continue;
+    minX = Math.min(minX, nb.x);
+    minY = Math.min(minY, nb.y);
+    maxX = Math.max(maxX, nb.x + nb.w);
+    maxY = Math.max(maxY, nb.y + nb.h);
+  }
+  if (!isFinite(minX)) return null;
+  return {
+    x: minX - CLUSTER_BBOX_PADDING,
+    y: minY - CLUSTER_BBOX_PADDING - 10,
+    w: maxX - minX + CLUSTER_BBOX_PADDING * 2,
+    h: maxY - minY + CLUSTER_BBOX_PADDING * 2 + 10,
+  };
 }
 
 // Temporary diagnostic for fixture_nested / fixture200 parity investigation.

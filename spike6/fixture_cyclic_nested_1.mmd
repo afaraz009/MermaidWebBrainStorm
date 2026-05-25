@@ -1,0 +1,50 @@
+flowchart TD
+
+    %% =========================
+    %% Cyclic-nested fixture 1 — Two sibling clusters at depth 4 with a
+    %% direct cycle between them (one solid forward edge, one dotted
+    %% back-edge). Tests whether dagre's cycle-breaking still produces a
+    %% Mermaid-aligned rank when both endpoints sit inside deeply nested
+    %% subgraphs (Outer > Middle > Inner > pair).
+    %% =========================
+
+    Start([Begin]) --> Outer_Entry
+
+    subgraph Outer [Outer Layer]
+        direction TB
+        Outer_Entry[Outer Entry]
+        Outer_Exit[Outer Exit]
+
+        subgraph Middle [Middle Layer]
+            direction TB
+            Middle_Hub{Middle Hub}
+
+            subgraph Inner [Inner Layer]
+                direction TB
+
+                subgraph Producer [Producer]
+                    direction TB
+                    P_Generate[[Generate Job]]
+                    P_Queue[(Job Queue)]
+                    P_Generate --> P_Queue
+                end
+
+                subgraph Consumer [Consumer]
+                    direction TB
+                    C_Pull[[Pull Job]]
+                    C_Process{Process Job}
+                    C_Pull --> C_Process
+                end
+
+                P_Queue --> C_Pull
+                C_Process -.->|retry| P_Generate
+            end
+
+            Middle_Hub --> P_Generate
+            C_Process --> Outer_Exit
+        end
+
+        Outer_Entry --> Middle_Hub
+    end
+
+    Outer_Exit --> Finish([End])

@@ -40,6 +40,13 @@ export interface IREdge {
   points?: { x: number; y: number }[];
   originalPoints?: { x: number; y: number }[];
   routedPath?: { x: number; y: number }[];
+  // When set, indicates this edge's endpoint was rewritten from a subgraph id
+  // by parser-adapter.ts. Renderer/layout should clip the edge endpoint to the
+  // cluster's bbox border instead of the leaf shape's outline. Mirrors
+  // Mermaid's `fromCluster`/`toCluster` edge attributes from
+  // adjustClustersAndEdges Pass 4 (mermaid.core/dagre-KV5264BT.mjs:262-268).
+  fromCluster?: string;
+  toCluster?: string;
 }
 
 export interface IRSubgraph {

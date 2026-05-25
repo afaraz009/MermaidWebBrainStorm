@@ -1,0 +1,487 @@
+{
+  "graph": {
+    "rankdir": "TB",
+    "nodesep": 50,
+    "ranksep": 50,
+    "marginx": 8,
+    "marginy": 8
+  },
+  "nodeCount": 32,
+  "nodes": [
+    {
+      "id": "Platform_Top",
+      "value": {
+        "label": "Platform",
+        "width": 88,
+        "height": 30
+      },
+      "parent": null
+    },
+    {
+      "id": "Entry",
+      "value": {
+        "label": "API Entry",
+        "width": 140,
+        "height": 50
+      },
+      "parent": null
+    },
+    {
+      "id": "Done",
+      "value": {
+        "label": "Done",
+        "width": 140,
+        "height": 50
+      },
+      "parent": null
+    },
+    {
+      "id": "Services_L2",
+      "value": {
+        "label": "Services Layer",
+        "width": 136,
+        "height": 30
+      },
+      "parent": "Platform_Top"
+    },
+    {
+      "id": "Storage_L2",
+      "value": {
+        "label": "Storage Layer",
+        "width": 128,
+        "height": 30
+      },
+      "parent": "Platform_Top"
+    },
+    {
+      "id": "PlatformIngress",
+      "value": {
+        "label": "Ingress Gateway",
+        "width": 144,
+        "height": 40
+      },
+      "parent": "Platform_Top"
+    },
+    {
+      "id": "PlatformExit",
+      "value": {
+        "label": "Egress",
+        "width": 130,
+        "height": 40
+      },
+      "parent": "Platform_Top"
+    },
+    {
+      "id": "Auth_L3",
+      "value": {
+        "label": "Auth Subsystem",
+        "width": 136,
+        "height": 30
+      },
+      "parent": "Services_L2"
+    },
+    {
+      "id": "Payments_L3",
+      "value": {
+        "label": "Payment Subsystem",
+        "width": 160,
+        "height": 30
+      },
+      "parent": "Services_L2"
+    },
+    {
+      "id": "ServiceRouter",
+      "value": {
+        "label": "Service Router",
+        "width": 140,
+        "height": 80
+      },
+      "parent": "Services_L2"
+    },
+    {
+      "id": "TokenInner_L4",
+      "value": {
+        "label": "Token Internals",
+        "width": 144,
+        "height": 30
+      },
+      "parent": "Auth_L3"
+    },
+    {
+      "id": "SessionInner_L4",
+      "value": {
+        "label": "Session Internals",
+        "width": 160,
+        "height": 30
+      },
+      "parent": "Auth_L3"
+    },
+    {
+      "id": "AuthEntry",
+      "value": {
+        "label": "Auth Entry",
+        "width": 130,
+        "height": 40
+      },
+      "parent": "Auth_L3"
+    },
+    {
+      "id": "TokenGen",
+      "value": {
+        "label": "Generate Token",
+        "width": 150,
+        "height": 50
+      },
+      "parent": "TokenInner_L4"
+    },
+    {
+      "id": "TokenSign",
+      "value": {
+        "label": "Sign Token",
+        "width": 150,
+        "height": 50
+      },
+      "parent": "TokenInner_L4"
+    },
+    {
+      "id": "TokenStore",
+      "value": {
+        "label": "Token Store",
+        "width": 140,
+        "height": 60
+      },
+      "parent": "TokenInner_L4"
+    },
+    {
+      "id": "SessionCreate",
+      "value": {
+        "label": "Create Session",
+        "width": 150,
+        "height": 50
+      },
+      "parent": "SessionInner_L4"
+    },
+    {
+      "id": "SessionCache",
+      "value": {
+        "label": "Session Cache",
+        "width": 140,
+        "height": 60
+      },
+      "parent": "SessionInner_L4"
+    },
+    {
+      "id": "CardProc_L4",
+      "value": {
+        "label": "Card Processor",
+        "width": 136,
+        "height": 30
+      },
+      "parent": "Payments_L3"
+    },
+    {
+      "id": "Refund_L4",
+      "value": {
+        "label": "Refund Processor",
+        "width": 152,
+        "height": 30
+      },
+      "parent": "Payments_L3"
+    },
+    {
+      "id": "PaymentEntry",
+      "value": {
+        "label": "Payment Entry",
+        "width": 130,
+        "height": 40
+      },
+      "parent": "Payments_L3"
+    },
+    {
+      "id": "CardValidate",
+      "value": {
+        "label": "Validate Card",
+        "width": 140,
+        "height": 80
+      },
+      "parent": "CardProc_L4"
+    },
+    {
+      "id": "CardCharge",
+      "value": {
+        "label": "Charge Card",
+        "width": 150,
+        "height": 50
+      },
+      "parent": "CardProc_L4"
+    },
+    {
+      "id": "CardLog",
+      "value": {
+        "label": "Charge Log",
+        "width": 140,
+        "height": 60
+      },
+      "parent": "CardProc_L4"
+    },
+    {
+      "id": "RefundQueue",
+      "value": {
+        "label": "Refund Queue",
+        "width": 160,
+        "height": 50
+      },
+      "parent": "Refund_L4"
+    },
+    {
+      "id": "RefundExec",
+      "value": {
+        "label": "Execute Refund",
+        "width": 150,
+        "height": 50
+      },
+      "parent": "Refund_L4"
+    },
+    {
+      "id": "PrimaryDB_L3",
+      "value": {
+        "label": "Primary DB",
+        "width": 104,
+        "height": 30
+      },
+      "parent": "Storage_L2"
+    },
+    {
+      "id": "CacheLayer_L3",
+      "value": {
+        "label": "Cache Layer",
+        "width": 112,
+        "height": 30
+      },
+      "parent": "Storage_L2"
+    },
+    {
+      "id": "PrimaryWrite",
+      "value": {
+        "label": "Primary Writes",
+        "width": 140,
+        "height": 60
+      },
+      "parent": "PrimaryDB_L3"
+    },
+    {
+      "id": "PrimaryRead",
+      "value": {
+        "label": "Primary Reads",
+        "width": 140,
+        "height": 60
+      },
+      "parent": "PrimaryDB_L3"
+    },
+    {
+      "id": "CacheHot",
+      "value": {
+        "label": "Hot Cache",
+        "width": 140,
+        "height": 60
+      },
+      "parent": "CacheLayer_L3"
+    },
+    {
+      "id": "CacheCold",
+      "value": {
+        "label": "Cold Cache",
+        "width": 140,
+        "height": 60
+      },
+      "parent": "CacheLayer_L3"
+    }
+  ],
+  "edgeCount": 23,
+  "edges": [
+    {
+      "v": "Entry",
+      "w": "PlatformIngress",
+      "value": {
+        "label": "",
+        "weight": 1
+      }
+    },
+    {
+      "v": "TokenGen",
+      "w": "TokenSign",
+      "value": {
+        "label": "",
+        "weight": 1
+      }
+    },
+    {
+      "v": "TokenSign",
+      "w": "TokenStore",
+      "value": {
+        "label": "",
+        "weight": 1
+      }
+    },
+    {
+      "v": "SessionCreate",
+      "w": "SessionCache",
+      "value": {
+        "label": "",
+        "weight": 1
+      }
+    },
+    {
+      "v": "AuthEntry",
+      "w": "TokenGen",
+      "value": {
+        "label": "",
+        "weight": 1
+      }
+    },
+    {
+      "v": "AuthEntry",
+      "w": "SessionCreate",
+      "value": {
+        "label": "",
+        "weight": 1
+      }
+    },
+    {
+      "v": "CardValidate",
+      "w": "CardCharge",
+      "value": {
+        "label": "ok",
+        "weight": 1
+      }
+    },
+    {
+      "v": "CardCharge",
+      "w": "CardLog",
+      "value": {
+        "label": "",
+        "weight": 1
+      }
+    },
+    {
+      "v": "RefundQueue",
+      "w": "RefundExec",
+      "value": {
+        "label": "",
+        "weight": 1
+      }
+    },
+    {
+      "v": "PaymentEntry",
+      "w": "CardValidate",
+      "value": {
+        "label": "",
+        "weight": 1
+      }
+    },
+    {
+      "v": "PaymentEntry",
+      "w": "RefundQueue",
+      "value": {
+        "label": "",
+        "weight": 1
+      }
+    },
+    {
+      "v": "ServiceRouter",
+      "w": "AuthEntry",
+      "value": {
+        "label": "auth",
+        "weight": 1
+      }
+    },
+    {
+      "v": "ServiceRouter",
+      "w": "PaymentEntry",
+      "value": {
+        "label": "payment",
+        "weight": 1
+      }
+    },
+    {
+      "v": "PrimaryWrite",
+      "w": "PrimaryRead",
+      "value": {
+        "label": "",
+        "weight": 1
+      }
+    },
+    {
+      "v": "CacheHot",
+      "w": "CacheCold",
+      "value": {
+        "label": "evict",
+        "weight": 1
+      }
+    },
+    {
+      "v": "PlatformIngress",
+      "w": "ServiceRouter",
+      "value": {
+        "label": "",
+        "weight": 1
+      }
+    },
+    {
+      "v": "TokenStore",
+      "w": "PrimaryWrite",
+      "value": {
+        "label": "",
+        "weight": 1
+      }
+    },
+    {
+      "v": "CardLog",
+      "w": "PrimaryWrite",
+      "value": {
+        "label": "",
+        "weight": 1
+      }
+    },
+    {
+      "v": "SessionCache",
+      "w": "CacheHot",
+      "value": {
+        "label": "",
+        "weight": 1
+      }
+    },
+    {
+      "v": "PrimaryRead",
+      "w": "PlatformExit",
+      "value": {
+        "label": "",
+        "weight": 1
+      }
+    },
+    {
+      "v": "PlatformExit",
+      "w": "Done",
+      "value": {
+        "label": "",
+        "weight": 1
+      }
+    },
+    {
+      "v": "RefundExec",
+      "w": "TokenStore",
+      "value": {
+        "label": "audit",
+        "weight": 1
+      }
+    },
+    {
+      "v": "SessionCache",
+      "w": "CardLog",
+      "value": {
+        "label": "sync",
+        "weight": 1
+      }
+    }
+  ]
+}

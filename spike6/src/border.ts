@@ -89,6 +89,31 @@ export function clipToBorder(
   return { x: cx + dx * t, y: cy + dy * t };
 }
 
+// Clip the endpoint of an edge to a cluster's axis-aligned bbox border. The
+// cluster bbox is the rectangle the renderer draws as the cluster outline
+// (computed from descendant leaf positions — see computeSubgraphBboxes in
+// renderer.ts). `towards` is the next waypoint in the edge: we return the
+// point on the bbox border along the line from the bbox center toward
+// `towards`. Used by layout.ts edge write-back for edges whose endpoint was
+// rewritten from a subgraph id (fromCluster/toCluster on IREdge).
+export function clipToClusterRect(
+  bbox: { x: number; y: number; w: number; h: number },  // top-left + size
+  towards: { x: number; y: number },
+): { x: number; y: number } {
+  const cx = bbox.x + bbox.w / 2;
+  const cy = bbox.y + bbox.h / 2;
+  const hw = bbox.w / 2;
+  const hh = bbox.h / 2;
+  const dx = towards.x - cx;
+  const dy = towards.y - cy;
+  if (dx === 0 && dy === 0) return { x: cx, y: cy };
+  // Find scale `t` such that |t*dx| <= hw AND |t*dy| <= hh; pick min.
+  const tx = dx !== 0 ? hw / Math.abs(dx) : Infinity;
+  const ty = dy !== 0 ? hh / Math.abs(dy) : Infinity;
+  const t = Math.min(tx, ty);
+  return { x: cx + dx * t, y: cy + dy * t };
+}
+
 // ── Shape vertex generators (clockwise from top-leftish) ──────────────────
 // Each generator returns polygon vertices in screen coords. `clipToPolygon`
 // walks the edges and picks the smallest positive t along the ray.

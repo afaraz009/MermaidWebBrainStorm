@@ -12,6 +12,23 @@ import {
 import { isSurrogateId, sgIdFromSurrogate, countHiddenDescendants } from './effective-ir.js';
 import { astarSettings } from './astarSettings.js';
 import { edgeSettings } from './edgeSettings.js';
+import { measureLabel, wrapEdgeLabel, edgeLabelSize, EDGE_LABEL_LINE_HEIGHT_EM } from './layout.js';
+
+// Mermaid v11 edge-label styling. Spec verified against Mermaid's source
+// (node_modules/mermaid/dist/mermaid.js:95453 + theme defaults at :2894):
+//   - background: edgeLabelBackground = `#e8e8e8`
+//   - rect has `opacity: 0.5` — softens the fill so it doesn't overwhelm the
+//     underlying edge line.
+// Wrap width (200px) + line-height (1.1) live in layout.ts because dagre also
+// uses edgeLabelSize to allocate space between nodes for the label.
+// These three constants (font, fill, opacity) and the rendered geometry must
+// stay aligned across the three label-render sites: initial render,
+// `restoreEdgeStyle`, `refreshEdgesFromLayout`.
+const EDGE_LABEL_FONT_SIZE = 16;
+const EDGE_LABEL_FONT_FAMILY = '"trebuchet ms", verdana, arial, sans-serif';
+const EDGE_LABEL_FILL = '#e8e8e8';
+const EDGE_LABEL_OPACITY = '0.5';
+const EDGE_LABEL_TEXT = '#333';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const PADDING = 20;
@@ -708,24 +725,34 @@ export function renderFull(ir: IR, mountEl: SVGElement, interactive = false, ori
 
     if (e.label) {
       const mid = pts[Math.floor(pts.length / 2)];
-      const labelW = e.label.length * 7 + 8;
-      const labelH = 16;
+      const lines = wrapEdgeLabel(e.label);
+      const { w: labelW, h: labelH } = edgeLabelSize(e.label);
       const bg = el('rect');
       bg.setAttribute('class', 'edge-label-bg');
       bg.setAttribute('x', String(mid.x - labelW / 2));
-      bg.setAttribute('y', String(mid.y - labelH - 4));
+      bg.setAttribute('y', String(mid.y - labelH / 2));
       bg.setAttribute('width', String(labelW));
       bg.setAttribute('height', String(labelH));
-      bg.setAttribute('fill', 'white');
-      bg.setAttribute('opacity', '0.5');
+      bg.setAttribute('fill', EDGE_LABEL_FILL);
+      bg.setAttribute('opacity', EDGE_LABEL_OPACITY);
       const text = el('text');
       text.setAttribute('class', 'edge-label-text');
       text.setAttribute('x', String(mid.x));
-      text.setAttribute('y', String(mid.y - 6));
+      text.setAttribute('y', String(mid.y));
       text.setAttribute('text-anchor', 'middle');
-      text.setAttribute('font-size', '11');
-      text.setAttribute('fill', '#333');
-      text.textContent = e.label;
+      text.setAttribute('dominant-baseline', 'middle');
+      text.setAttribute('font-size', String(EDGE_LABEL_FONT_SIZE));
+      text.setAttribute('font-family', EDGE_LABEL_FONT_FAMILY);
+      text.setAttribute('fill', EDGE_LABEL_TEXT);
+      // Multi-line: first tspan at -((n-1)/2) * lineHeight, subsequent at +1.1em.
+      const dy0 = -((lines.length - 1) / 2) * EDGE_LABEL_LINE_HEIGHT_EM;
+      for (let i = 0; i < lines.length; i++) {
+        const tspan = el('tspan') as SVGTSpanElement;
+        tspan.setAttribute('x', String(mid.x));
+        tspan.setAttribute('dy', i === 0 ? `${dy0}em` : `${EDGE_LABEL_LINE_HEIGHT_EM}em`);
+        tspan.textContent = lines[i];
+        text.appendChild(tspan);
+      }
       g.appendChild(bg);
       g.appendChild(text);
     }
@@ -942,18 +969,19 @@ export function restoreEdgeStyle(
     const pts = meta.displayPoints.get(key);
     if (pts && pts.length > 0) {
       const mid = pts[Math.floor(pts.length / 2)];
-      const labelW = (edge.label?.length ?? 0) * 7 + 8;
+      const { w: labelW, h: labelH } = edgeLabelSize(edge.label ?? '');
       const bgEl = mountEl.querySelector(`[data-edge-key="${key}"] .edge-label-bg`) as SVGElement | null;
       if (bgEl) {
         bgEl.removeAttribute('display');
         bgEl.setAttribute('x', String(mid.x - labelW / 2));
-        bgEl.setAttribute('y', String(mid.y - 20));
+        bgEl.setAttribute('y', String(mid.y - labelH / 2));
       }
       const textEl = mountEl.querySelector(`[data-edge-key="${key}"] .edge-label-text`) as SVGElement | null;
       if (textEl) {
         textEl.removeAttribute('display');
         textEl.setAttribute('x', String(mid.x));
-        textEl.setAttribute('y', String(mid.y - 6));
+        textEl.setAttribute('y', String(mid.y));
+        textEl.querySelectorAll('tspan').forEach(t => t.setAttribute('x', String(mid.x)));
       }
     }
   }
@@ -1008,18 +1036,19 @@ export function refreshEdgesFromLayout(mountEl: SVGElement): void {
     if (arrowEl) { arrowEl.removeAttribute('display'); updateArrowLine(arrowEl, pts); }
 
     const mid = pts[Math.floor(pts.length / 2)];
-    const labelW = (e.label?.length ?? 0) * 7 + 8;
+    const { w: labelW, h: labelH } = edgeLabelSize(e.label ?? '');
     const bgEl = mountEl.querySelector(`[data-edge-key="${key}"] .edge-label-bg`) as SVGElement | null;
     if (bgEl) {
       bgEl.removeAttribute('display');
       bgEl.setAttribute('x', String(mid.x - labelW / 2));
-      bgEl.setAttribute('y', String(mid.y - 20));
+      bgEl.setAttribute('y', String(mid.y - labelH / 2));
     }
     const textEl = mountEl.querySelector(`[data-edge-key="${key}"] .edge-label-text`) as SVGElement | null;
     if (textEl) {
       textEl.removeAttribute('display');
       textEl.setAttribute('x', String(mid.x));
-      textEl.setAttribute('y', String(mid.y - 6));
+      textEl.setAttribute('y', String(mid.y));
+      textEl.querySelectorAll('tspan').forEach(t => t.setAttribute('x', String(mid.x)));
     }
   }
 

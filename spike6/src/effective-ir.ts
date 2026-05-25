@@ -84,7 +84,17 @@ export function deriveEffectiveIR(ir: IR): IR {
     const key = from + '\x00' + to;
     if (seen.has(key)) continue;
     seen.add(key);
-    edges.push({ from, to, label: e.label, style: e.style });
+    edges.push({
+      from, to,
+      label: e.label, style: e.style,
+      // Preserve cluster-anchor annotations stamped by parser-adapter so
+      // layout.ts can clip edge endpoints to the cluster border instead of
+      // the rewritten leaf. Stripping these here was making cluster-endpoint
+      // edges visually terminate at deep leaves (e.g. Productivity→Halt
+      // landing on Comment in fixture_cyclic_nested_3).
+      fromCluster: e.fromCluster,
+      toCluster: e.toCluster,
+    });
   }
 
   return { nodes, edges, subgraphs };

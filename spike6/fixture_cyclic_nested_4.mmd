@@ -1,0 +1,41 @@
+flowchart TD
+
+    %% =========================
+    %% Cyclic-nested fixture 4 — Diamond + back-edge inside a deeply
+    %% nested cluster. Source forks to two siblings; both siblings merge
+    %% to a join; join cycles back to the source via a dotted edge. All
+    %% four nodes are at depth 3. Tests dagre cycle-breaking on a
+    %% multi-edge SCC where the back-edge isn't the only option.
+    %% =========================
+
+    Start([Begin]) --> Pipeline
+
+    subgraph Pipeline [Pipeline]
+        direction TB
+        Pipe_Enter[Enter]
+
+        subgraph Stage [Stage]
+            direction TB
+            Stage_Coord{Coordinator}
+
+            subgraph DiamondScc [Diamond SCC]
+                direction TB
+                D_Source{Plan}
+                D_Left[[Validate]]
+                D_Right[[Optimize]]
+                D_Join[(Result)]
+                D_Source -->|primary| D_Left
+                D_Source -->|alternate| D_Right
+                D_Left --> D_Join
+                D_Right --> D_Join
+                D_Join -.->|replan| D_Source
+            end
+
+            Stage_Coord --> D_Source
+        end
+
+        Pipe_Enter --> Stage_Coord
+        Stage --> Pipe_Exit[Exit]
+    end
+
+    Pipeline --> Done([Done])
