@@ -432,13 +432,27 @@ function collectClusterLeaves(clusterId: string, ir: IR, out: IRNode[]): void {
   }
 }
 
-// Pass-1.5 re-anchor. For every IR edge stamped with fromCluster/toCluster,
-// find the bottom-most (outgoing) or top-most (incoming) leaf of that cluster
-// by actual Y coord after pass-1 dagre. If the current anchor isn't extremal,
-// swap and signal that the graph needs re-running. Returns true if anything
-// changed.
+// Pass-1.5 re-anchor. Only applies to TOP-LEVEL clusters (no parent) —
+// those are the clusters Mermaid's recursive render encapsulates into a
+// single sized node at the outer dagre call, where the cross-edge falls
+// cleanly above/below the cluster as a leaf-to-leaf edge. Our flat layout
+// can't encapsulate, so we mimic the result by anchoring the edge at the
+// extremal leaf by Y (bottom-most for outgoing, top-most for incoming),
+// which makes dagre rank the other endpoint past the cluster's bbox edge.
+//
+// Verified against Mermaid v11 dumps for cyc3/cyc4: Mermaid PRESERVES
+// top-level cluster edges in its Adjusted Graph (Productivity→Halt,
+// Start→Pipeline, Pipeline→Done all kept as-is) and only REWRITES nested
+// cluster edges (Stage→Pipe_Exit rewritten to D_Source→Pipe_Exit). So for
+// nested clusters we keep the parser-adapter's first-DFS anchor — that's
+// what Mermaid does.
 function reanchorClusterEdges(ir: IR, g: any): boolean {
   let changed = false;
+  const sgById = new Map(ir.subgraphs.map(sg => [sg.id, sg]));
+  const isTopLevel = (id: string): boolean => {
+    const sg = sgById.get(id);
+    return !!sg && !sg.parent;
+  };
   const leafCache = new Map<string, IRNode[]>();
   function leavesOf(id: string): IRNode[] {
     let l = leafCache.get(id);
@@ -455,14 +469,14 @@ function reanchorClusterEdges(ir: IR, g: any): boolean {
     return gn ? gn.y : 0;
   };
   for (const e of ir.edges) {
-    if (e.fromCluster) {
+    if (e.fromCluster && isTopLevel(e.fromCluster)) {
       const leaves = leavesOf(e.fromCluster);
       if (leaves.length > 0) {
         const bottom = leaves.reduce((a, b) => (yOf(a.id) > yOf(b.id) ? a : b));
         if (bottom.id !== e.from) { e.from = bottom.id; changed = true; }
       }
     }
-    if (e.toCluster) {
+    if (e.toCluster && isTopLevel(e.toCluster)) {
       const leaves = leavesOf(e.toCluster);
       if (leaves.length > 0) {
         const top = leaves.reduce((a, b) => (yOf(a.id) < yOf(b.id) ? a : b));
