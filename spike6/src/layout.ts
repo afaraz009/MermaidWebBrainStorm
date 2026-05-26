@@ -432,26 +432,47 @@ function collectClusterLeaves(clusterId: string, ir: IR, out: IRNode[]): void {
   }
 }
 
-// Pass-1.5 re-anchor. Only applies to TOP-LEVEL clusters (no parent) —
-// those are the clusters Mermaid's recursive render encapsulates into a
-// single sized node at the outer dagre call, where the cross-edge falls
-// cleanly above/below the cluster as a leaf-to-leaf edge. Our flat layout
-// can't encapsulate, so we mimic the result by anchoring the edge at the
-// extremal leaf by Y (bottom-most for outgoing, top-most for incoming),
-// which makes dagre rank the other endpoint past the cluster's bbox edge.
+// Pass-1.5 re-anchor. Only applies to clusters with externalConnections=false
+// (no IR edge crosses the cluster boundary except cluster-endpoint edges
+// themselves). For these, Mermaid's recursive render encapsulates the cluster
+// as a single sized node at the parent's dagre call, and the cross-edge
+// target lands above/below as a normal leaf-to-leaf placement. Flat dagre
+// can't encapsulate, so we mimic the result by anchoring at the extremal
+// leaf by Y — bottom-most for outgoing, top-most for incoming.
 //
-// Verified against Mermaid v11 dumps for cyc3/cyc4: Mermaid PRESERVES
-// top-level cluster edges in its Adjusted Graph (Productivity→Halt,
-// Start→Pipeline, Pipeline→Done all kept as-is) and only REWRITES nested
-// cluster edges (Stage→Pipe_Exit rewritten to D_Source→Pipe_Exit). So for
-// nested clusters we keep the parser-adapter's first-DFS anchor — that's
-// what Mermaid does.
+// For clusters with externalConnections=true (e.g. cyc2 API_Layer with
+// Cache_Store→Telemetry_Sink crossing the boundary, or cyc4 Stage with
+// Pipe_Enter→Stage_Coord crossing), Mermaid DOES rewrite the cluster edge
+// to its first-DFS anchor leaf. In that case we keep the parser-adapter's
+// first-DFS pick — which already matches Mermaid byte-for-byte (Cache_Lookup
+// for cyc2 API_Layer, D_Source for cyc4 Stage).
+//
+// `hasExternalConnection` checks each IR edge: if exactly one of its
+// endpoints is a descendant of the cluster (XOR), the edge crosses the
+// boundary. Cluster-endpoint edges themselves don't count — the cluster
+// id is not a descendant of itself in Mermaid's isDescendant.
 function reanchorClusterEdges(ir: IR, g: any): boolean {
   let changed = false;
-  const sgById = new Map(ir.subgraphs.map(sg => [sg.id, sg]));
-  const isTopLevel = (id: string): boolean => {
-    const sg = sgById.get(id);
-    return !!sg && !sg.parent;
+  const descendants = buildDescendantsMap(ir);
+  const hasExternal = (clusterId: string): boolean => {
+    const desc = descendants.get(clusterId);
+    if (!desc) return false;
+    // Use the ORIGINAL endpoint (the cluster id) when an edge was rewritten —
+    // otherwise the rewrite itself makes every cluster-anchored edge look
+    // boundary-crossing (e.g. Start→Pipeline rewritten to Start→D_Source
+    // would falsely report Pipeline as having external connections because
+    // D_Source is descendant of Pipeline but Start isn't). Per Mermaid's
+    // isDescendant: a cluster is NOT a descendant of itself, so an edge
+    // whose original endpoint IS the cluster contributes d=false on that
+    // side and doesn't trigger external.
+    for (const e of ir.edges) {
+      const src = e.fromCluster ?? e.from;
+      const dst = e.toCluster ?? e.to;
+      const d1 = desc.has(src);
+      const d2 = desc.has(dst);
+      if (d1 !== d2) return true;
+    }
+    return false;
   };
   const leafCache = new Map<string, IRNode[]>();
   function leavesOf(id: string): IRNode[] {
@@ -469,14 +490,14 @@ function reanchorClusterEdges(ir: IR, g: any): boolean {
     return gn ? gn.y : 0;
   };
   for (const e of ir.edges) {
-    if (e.fromCluster && isTopLevel(e.fromCluster)) {
+    if (e.fromCluster && !hasExternal(e.fromCluster)) {
       const leaves = leavesOf(e.fromCluster);
       if (leaves.length > 0) {
         const bottom = leaves.reduce((a, b) => (yOf(a.id) > yOf(b.id) ? a : b));
         if (bottom.id !== e.from) { e.from = bottom.id; changed = true; }
       }
     }
-    if (e.toCluster && isTopLevel(e.toCluster)) {
+    if (e.toCluster && !hasExternal(e.toCluster)) {
       const leaves = leavesOf(e.toCluster);
       if (leaves.length > 0) {
         const top = leaves.reduce((a, b) => (yOf(a.id) < yOf(b.id) ? a : b));
@@ -485,6 +506,41 @@ function reanchorClusterEdges(ir: IR, g: any): boolean {
     }
   }
   return changed;
+}
+
+// Map cluster id → set of all descendant node + subgraph ids (deep).
+// Used by `hasExternalConnection` to detect boundary-crossing edges per
+// Mermaid's `isDescendant` semantics (the cluster itself is NOT a descendant
+// of itself).
+function buildDescendantsMap(ir: IR): Map<string, Set<string>> {
+  const childrenOf = new Map<string, string[]>();
+  for (const sg of ir.subgraphs) {
+    childrenOf.set(sg.id, []);
+  }
+  for (const sg of ir.subgraphs) {
+    if (sg.parent) childrenOf.get(sg.parent)!.push(sg.id);
+  }
+  for (const n of ir.nodes) {
+    if (n.parent) {
+      if (!childrenOf.has(n.parent)) childrenOf.set(n.parent, []);
+      childrenOf.get(n.parent)!.push(n.id);
+    }
+  }
+  const out = new Map<string, Set<string>>();
+  function collect(id: string, into: Set<string>): void {
+    const kids = childrenOf.get(id);
+    if (!kids) return;
+    for (const k of kids) {
+      into.add(k);
+      collect(k, into);
+    }
+  }
+  for (const sg of ir.subgraphs) {
+    const desc = new Set<string>();
+    collect(sg.id, desc);
+    out.set(sg.id, desc);
+  }
+  return out;
 }
 function clusterBboxFromIR(
   clusterId: string,

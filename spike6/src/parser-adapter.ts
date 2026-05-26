@@ -4,64 +4,46 @@ import type { IR, IRNode, IREdge, IRSubgraph, NodeShape } from './types.js';
 // edge has a subgraph id as endpoint, we must rewrite the endpoint to one of
 // the cluster's descendant LEAVES (dagre rejects compound-node endpoints).
 //
-// Walk order is direction-dependent because flat dagre layout can't replicate
-// Mermaid's recursive-render encapsulation. Mermaid renders each cluster
-// independently then drops it into the parent's layout as a single sized
-// node — the cross-edge becomes a normal leaf-to-leaf edge at the parent
-// level and never dictates the cluster's interior ordering. We can't do
-// that. So the anchor we pick at the FROM side and the TO side directly
-// shape dagre's rank assignment and back-edge picks for the cluster:
+// Walks children in the order Mermaid's `graph.children(id)` returns them:
+// SUBGRAPHS in REVERSED declaration order first (matches the sibling-reverse
+// insertion in layout.ts:sortNodesByHierarchy — Mermaid v11 inserts subgraph
+// nodes into the dagre graph in reverse-declaration order), THEN direct LEAVES
+// in declaration order. Verified against Mermaid v11 dumps for cyc2/cyc3/cyc4:
+//   - cyc2 API_Layer.children = [Service_Tier, API_Router] → first-DFS picks
+//     Cache_Lookup (Service_Tier → Cache_Tier → Cache_Lookup).
+//   - cyc3 Productivity.children = [Apps] → Apps.children = [ProdB, ProdA]
+//     (reversed) → ProdB.children = [Rev_Open, Rev_Comment] → picks Rev_Open.
+//   - cyc4 Stage.children = [DiamondScc, Stage_Coord] → DiamondScc.children =
+//     [D_Source, D_Left, D_Right, D_Join] → picks D_Source.
 //
-//   pickLast=true (outgoing / FROM-side): walk sg.nodes in DECLARATION
-//     order — Mermaid-faithful. Verified against cyc4's dump for
-//     `Stage → Pipe_Exit`: Mermaid walks [Stage_Coord, DiamondScc, D_Source]
-//     in order, rejects Stage_Coord (common edge with Pipe_Enter→Stage),
-//     recurses into DiamondScc, returns D_Source — which puts Pipe_Exit
-//     beside DiamondScc's middle rank, matching Mermaid's visual. Pass-1.5
-//     in layout.ts then re-anchors TOP-LEVEL outgoing edges to the
-//     bottom-most leaf by Y so dagre ranks the target past the cluster
-//     bbox bottom (mimicking Mermaid's "single node" encapsulation result).
-//
-//   pickLast=false (incoming / TO-side): prefer DIRECT leaves over deep
-//     descendants, and walk subgraphs in REVERSED declaration order. This
-//     deviates from Mermaid's algorithm but matches what Mermaid's
-//     recursive-render visual implies for sibling-reverse clusters. For
-//     cyc3's `DP_Reporter → Productivity`, declaration-order would pick
-//     Ed_Compose (Editor's top leaf), pulling Editor up — but Mermaid
-//     renders Reviewer at the top of Apps (sibling-reverse). With this
-//     reversed walk we pick Rev_Open instead, so dagre pulls Reviewer up
-//     to match. Fallback to subgraph-reversed when no direct leaves are
-//     available — Productivity has only [Apps] direct, so we recurse Apps
-//     and try ProdB (Reviewer) first.
+// `findCommonEdges` short-circuits to `reserve` when picking a child would
+// create a dagre self-loop (e.g. a leaf already connected to a sibling that
+// also touches the cluster), so the algorithm keeps walking. Direction-
+// agnostic: layout.ts's pass-1.5 re-anchors clusters with
+// `externalConnections=false` to the extremal leaf by Y (mimicking Mermaid's
+// recursive-render encapsulation result, which our flat layout cannot
+// replicate natively).
 function findNonClusterChild(
   id: string,
   rawSubgraphsById: Map<string, any>,
   subgraphIds: Set<string>,
   clusterId: string,
   edges: { from: string; to: string }[],
-  pickLast: boolean,
 ): string | undefined {
   const sg = rawSubgraphsById.get(id);
   if (!sg) return id;  // already a leaf
 
-  let ordered: string[];
-  if (pickLast) {
-    ordered = sg.nodes as string[];
-  } else {
-    const subgraphChildren = (sg.nodes as string[]).filter(n => subgraphIds.has(n));
-    const leafChildren = (sg.nodes as string[]).filter(n => !subgraphIds.has(n));
-    if (leafChildren.length > 0) {
-      ordered = [...leafChildren, ...subgraphChildren];
-    } else {
-      ordered = subgraphChildren.slice().reverse();
-    }
-  }
+  const subgraphChildren = (sg.nodes as string[]).filter(n => subgraphIds.has(n));
+  const leafChildren = (sg.nodes as string[]).filter(n => !subgraphIds.has(n));
+  // Subgraphs reversed (matches sortNodesByHierarchy's sibling-reverse) then
+  // leaves in declaration order — equivalent to Mermaid's graph.children().
+  const ordered = [...subgraphChildren.slice().reverse(), ...leafChildren];
 
   if (ordered.length === 0) return undefined;
 
   let reserve: string | undefined;
   for (const child of ordered) {
-    const _id = findNonClusterChild(child, rawSubgraphsById, subgraphIds, clusterId, edges, pickLast);
+    const _id = findNonClusterChild(child, rawSubgraphsById, subgraphIds, clusterId, edges);
     if (!_id) continue;
     const common = findCommonEdges(edges, clusterId, _id);
     if (common.length > 0) {
@@ -186,7 +168,7 @@ export async function parseToIR(source: string): Promise<IR> {
     let fromCluster: string | undefined;
     let toCluster: string | undefined;
     if (subgraphIds.has(from)) {
-      const leaf = findNonClusterChild(from, rawSubgraphsById, subgraphIds, from, rawEndpointPairs, true);
+      const leaf = findNonClusterChild(from, rawSubgraphsById, subgraphIds, from, rawEndpointPairs);
       if (!leaf) {
         console.warn(`[parser-adapter] dropping edge from empty subgraph "${from}" → "${to}"`);
         continue;
@@ -195,7 +177,7 @@ export async function parseToIR(source: string): Promise<IR> {
       from = leaf;
     }
     if (subgraphIds.has(to)) {
-      const leaf = findNonClusterChild(to, rawSubgraphsById, subgraphIds, to, rawEndpointPairs, false);
+      const leaf = findNonClusterChild(to, rawSubgraphsById, subgraphIds, to, rawEndpointPairs);
       if (!leaf) {
         console.warn(`[parser-adapter] dropping edge from "${e.from}" → empty subgraph "${to}"`);
         continue;
