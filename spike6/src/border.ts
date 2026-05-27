@@ -100,14 +100,29 @@ export function clipToClusterRect(
   bbox: { x: number; y: number; w: number; h: number },  // top-left + size
   towards: { x: number; y: number },
 ): { x: number; y: number } {
+  // Perpendicular projection onto the bbox border when `towards` is clearly
+  // outside on one side. This keeps the edge perpendicular to the cluster
+  // border at the entry/exit point (matches Mermaid v11 visuals). The
+  // previous center-ray approach pulled the clip point toward the side
+  // proportional to the source's horizontal offset, producing a noticeably
+  // bent arrow when the source wasn't perfectly center-aligned.
+  const right = bbox.x + bbox.w;
+  const bottom = bbox.y + bbox.h;
+  const clampX = Math.max(bbox.x, Math.min(right, towards.x));
+  const clampY = Math.max(bbox.y, Math.min(bottom, towards.y));
+  if (towards.y < bbox.y)      return { x: clampX, y: bbox.y };
+  if (towards.y > bottom)      return { x: clampX, y: bottom };
+  if (towards.x < bbox.x)      return { x: bbox.x, y: clampY };
+  if (towards.x > right)       return { x: right,  y: clampY };
+  // `towards` is inside or on the bbox — fall back to a center-ray clip so
+  // the result still lands on the border.
   const cx = bbox.x + bbox.w / 2;
   const cy = bbox.y + bbox.h / 2;
-  const hw = bbox.w / 2;
-  const hh = bbox.h / 2;
   const dx = towards.x - cx;
   const dy = towards.y - cy;
   if (dx === 0 && dy === 0) return { x: cx, y: cy };
-  // Find scale `t` such that |t*dx| <= hw AND |t*dy| <= hh; pick min.
+  const hw = bbox.w / 2;
+  const hh = bbox.h / 2;
   const tx = dx !== 0 ? hw / Math.abs(dx) : Infinity;
   const ty = dy !== 0 ? hh / Math.abs(dy) : Infinity;
   const t = Math.min(tx, ty);
