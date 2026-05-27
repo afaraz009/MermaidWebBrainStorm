@@ -91,8 +91,8 @@ export function clipToBorder(
 
 // Clip the endpoint of an edge to a cluster's axis-aligned bbox border. The
 // cluster bbox is the rectangle the renderer draws as the cluster outline
-// (computed from descendant leaf positions — see computeSubgraphBboxes in
-// renderer.ts). `towards` is the next waypoint in the edge: we return the
+// (computed from descendant leaf positions — see computeClusterBboxes in
+// cluster-bbox.ts). `towards` is the next waypoint in the edge: we return the
 // point on the bbox border along the line from the bbox center toward
 // `towards`. Used by layout.ts edge write-back for edges whose endpoint was
 // rewritten from a subgraph id (fromCluster/toCluster on IREdge).

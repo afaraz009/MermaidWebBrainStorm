@@ -3,6 +3,7 @@ import {
   refreshEdgesFromLayout,
   buildSideAwareCurvesForNode,
 } from './renderer.js';
+import { computeClusterBboxes } from './cluster-bbox.js';
 import { routeEdgesBatch, DEFAULT_CONFIG } from './routing.js';
 import { renderGridOverlay, isGridOverlayShown } from './gridOverlay.js';
 import { astarSettings } from './astarSettings.js';
@@ -95,10 +96,15 @@ export function attachDrag(svg: SVGSVGElement, ir: IR, mountEl: SVGElement): () 
       if (droppedNode) {
         const connectedEdges = ir.edges.filter(e => e.from === droppedId || e.to === droppedId);
         const nodesById = new Map(ir.nodes.map(n => [n.id, n]));
+        const clusterBboxes = ir.subgraphs.length > 0 ? computeClusterBboxes(ir) : undefined;
         const curves = buildSideAwareCurvesForNode(
           droppedNode,
-          connectedEdges.map(e => ({ from: e.from, to: e.to, ref: e })),
+          connectedEdges.map(e => ({
+            from: e.from, to: e.to, ref: e,
+            fromCluster: e.fromCluster, toCluster: e.toCluster,
+          })),
           nodesById,
+          clusterBboxes,
         );
         for (const edge of connectedEdges) {
           delete edge.routedPath;

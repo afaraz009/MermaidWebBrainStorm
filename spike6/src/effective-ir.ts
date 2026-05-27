@@ -84,16 +84,28 @@ export function deriveEffectiveIR(ir: IR): IR {
     const key = from + '\x00' + to;
     if (seen.has(key)) continue;
     seen.add(key);
+    // Cluster-anchor annotations: preserve a side's annotation ONLY if that
+    // side wasn't remapped into a surrogate. When a side gets collapsed into
+    // a surrogate, the original cluster id no longer resolves to anything in
+    // the derived IR's `subgraphs` (the cluster has been filtered out) — so
+    // the annotation would become dead data that downstream code relies on
+    // returning `undefined` from. Strip it explicitly here so the data flow
+    // is intentional, not accidental.
+    //
+    // The non-remapped side keeps its annotation (it still points at a real
+    // cluster in the derived IR). Common case: an edge from outside into a
+    // collapsed cluster keeps the OUTSIDE side's annotation if it had one,
+    // drops the collapsed side's.
+    //
+    // ⚠ Load-bearing invariant — see the comment block above
+    // `reanchorClusterEdges` in layout.ts. The invariant is preserved
+    // (annotations always equal the pre-rewrite original endpoint OR are
+    // absent); we just clear them where they'd be unresolvable.
     edges.push({
       from, to,
       label: e.label, style: e.style,
-      // Preserve cluster-anchor annotations stamped by parser-adapter so
-      // layout.ts can clip edge endpoints to the cluster border instead of
-      // the rewritten leaf. Stripping these here was making cluster-endpoint
-      // edges visually terminate at deep leaves (e.g. Productivity→Halt
-      // landing on Comment in fixture_cyclic_nested_3).
-      fromCluster: e.fromCluster,
-      toCluster: e.toCluster,
+      fromCluster: from === e.from ? e.fromCluster : undefined,
+      toCluster:   to   === e.to   ? e.toCluster   : undefined,
     });
   }
 

@@ -9,6 +9,8 @@ import {
   isBlocked,
 } from './astar.js';
 import { astarSettings, lastTrace, type EdgeSeparation } from './astarSettings.js';
+import { computeClusterBboxes, type BBox } from './cluster-bbox.js';
+import { clipToClusterRect } from './border.js';
 
 export interface RoutingConfig {
   cellSize: number;
@@ -430,18 +432,25 @@ function markPathCells(
 // Edge ordering: longest manhattan distance first. Long edges are the most
 // constrained (they cross more obstacles) so giving them first pick of cells
 // keeps short edges flexible to detour around the long ones.
+//
+// Cluster-anchored edges: after each path is routed against the leaf endpoint
+// (the rewritten dagre endpoint), `clipPathToCluster` trims the cluster-side
+// segments so the visible path terminates on the drawn cluster border —
+// matching the static dagre render and the drag preview.
 export function routeEdgesBatch(
   edges: IREdge[],
   ir: IR,
   config: RoutingConfig,
   separation: EdgeSeparation,
 ): void {
+  const clusterBboxes = ir.subgraphs.length > 0 ? computeClusterBboxes(ir) : undefined;
   if (separation === 'off') {
     for (const edge of edges) {
       const fromNode = ir.nodes.find(n => n.id === edge.from);
       const toNode   = ir.nodes.find(n => n.id === edge.to);
       if (!fromNode || !toNode) continue;
-      edge.routedPath = routeEdge(fromNode, toNode, ir, config);
+      const path = routeEdge(fromNode, toNode, ir, config);
+      edge.routedPath = clipPathToCluster(path, edge, clusterBboxes);
     }
     return;
   }
@@ -476,10 +485,56 @@ export function routeEdgesBatch(
     const fromNode = ir.nodes.find(n => n.id === edge.from);
     const toNode   = ir.nodes.find(n => n.id === edge.to);
     if (!fromNode || !toNode) continue;
-    edge.routedPath = routeEdgeOnSharedGrid(
+    const path = routeEdgeOnSharedGrid(
       fromNode, toNode, ir, config, baseGrid, extraCost, dynamicBlocked,
     );
+    edge.routedPath = clipPathToCluster(path, edge, clusterBboxes);
   }
+}
+
+// Trim a routed path so cluster-side endpoints land on the drawn cluster
+// border instead of the rewritten leaf. For an edge with `fromCluster`/
+// `toCluster`, walk the path from the cluster end and drop every point that
+// lies INSIDE the cluster bbox (these were artefacts of routing from the
+// leaf's dock cell). Replace the trimmed prefix/suffix with a single
+// perpendicular-clip point on the cluster border — same rule as the dagre
+// edge writeback in layout.ts, so the static and A* renders agree.
+function clipPathToCluster(
+  path: { x: number; y: number }[],
+  edge: IREdge,
+  clusterBboxes: Map<string, BBox> | undefined,
+): { x: number; y: number }[] {
+  if (path.length < 2 || !clusterBboxes) return path;
+  let pts = path;
+  if (edge.fromCluster) {
+    const bbox = clusterBboxes.get(edge.fromCluster);
+    if (bbox) {
+      while (pts.length > 1 && pointInBBox(pts[0], bbox)) pts = pts.slice(1);
+      if (pts.length >= 1) {
+        const target = pts.length >= 2 ? pts[0] : pts[0];
+        const clipped = clipToClusterRect(bbox, target);
+        pts = [clipped, ...pts];
+      }
+    }
+  }
+  if (edge.toCluster) {
+    const bbox = clusterBboxes.get(edge.toCluster);
+    if (bbox) {
+      while (pts.length > 1 && pointInBBox(pts[pts.length - 1], bbox)) {
+        pts = pts.slice(0, -1);
+      }
+      if (pts.length >= 1) {
+        const target = pts[pts.length - 1];
+        const clipped = clipToClusterRect(bbox, target);
+        pts = [...pts, clipped];
+      }
+    }
+  }
+  return pts;
+}
+
+function pointInBBox(p: { x: number; y: number }, b: BBox): boolean {
+  return p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h;
 }
 
 // Like `routeEdge` but uses a caller-supplied shared grid + cost buffers. The

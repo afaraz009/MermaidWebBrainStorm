@@ -2,6 +2,7 @@ import { line, curveBasis } from 'd3-shape';
 import type { IR, IREdge, IRSubgraph, IRNode, NodeShape } from './types.js';
 import {
   clipToBorder,
+  clipToClusterRect,
   hexagonVerts,
   parallelogramRightVerts,
   parallelogramLeftVerts,
@@ -13,6 +14,7 @@ import { isSurrogateId, sgIdFromSurrogate, countHiddenDescendants } from './effe
 import { astarSettings } from './astarSettings.js';
 import { edgeSettings } from './edgeSettings.js';
 import { measureLabel, wrapEdgeLabel, edgeLabelSize, EDGE_LABEL_LINE_HEIGHT_EM } from './layout.js';
+import { computeClusterBboxes, type BBox } from './cluster-bbox.js';
 
 // Mermaid v11 edge-label styling. Spec verified against Mermaid's source
 // (node_modules/mermaid/dist/mermaid.js:95453 + theme defaults at :2894):
@@ -31,7 +33,6 @@ const EDGE_LABEL_OPACITY = '0.5';
 const EDGE_LABEL_TEXT = '#333';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
-const PADDING = 20;
 const ARROW_TIP_LEN = 10;
 const ARROW_MARKER_ID = 'arrow';
 
@@ -39,8 +40,6 @@ const ARROW_MARKER_ID = 'arrow';
 export function edgeKey(from: string, to: string): string {
   return `${from}::${to}`;
 }
-
-interface BBox { x: number; y: number; w: number; h: number }
 
 interface MountMeta {
   ir: IR;
@@ -367,13 +366,21 @@ export function buildSideAwareCurve(
 //
 // Returns a Map keyed by the caller's `ref` so the caller can write the points
 // back onto IR / displayPoints without re-deriving identity.
+//
+// Cluster-anchored peers: if an edge has `fromCluster`/`toCluster` set on the
+// peer side (i.e. the peer's id is the rewritten leaf of a subgraph endpoint),
+// the caller supplies the cluster bbox via `clusterBboxes`. We then treat the
+// peer as a rectangle the size of the drawn cluster — axis classification +
+// side picking + anchor clipping all use the cluster bbox instead of the
+// leaf's outline, so the drag preview matches the post-layout static render.
 export function buildSideAwareCurvesForNode(
   pivotNode: IRNode,
-  edges: { from: string; to: string; ref: unknown }[],
+  edges: { from: string; to: string; ref: unknown; fromCluster?: string; toCluster?: string }[],
   nodesById: Map<string, IRNode>,
+  clusterBboxes?: Map<string, BBox>,
   stubDist = 16,
 ): Map<unknown, { x: number; y: number }[]> {
-  type Item = { ref: unknown; peer: IRNode; isOutgoing: boolean };
+  type Item = { ref: unknown; peer: IRNode; isOutgoing: boolean; peerCluster?: BBox };
   const bySide: Record<Side, Item[]> = { top: [], bottom: [], left: [], right: [] };
   const overlapItems: Item[] = [];
 
@@ -382,12 +389,19 @@ export function buildSideAwareCurvesForNode(
     const peerId = isOutgoing ? e.to : e.from;
     const peer = nodesById.get(peerId);
     if (!peer) continue;
-    const axis = classifyAxis(pivotNode, peer);
+    // Peer side cluster annotation: outgoing → toCluster, incoming → fromCluster.
+    const peerClusterId = isOutgoing ? e.toCluster : e.fromCluster;
+    const peerCluster = peerClusterId ? clusterBboxes?.get(peerClusterId) : undefined;
+    // For axis/side classification, use the cluster's rectangle when the peer
+    // is cluster-anchored — otherwise the leaf's tiny bbox would pick the
+    // wrong side once the pivot is dragged across the cluster boundary.
+    const peerForAxis = peerCluster ? bboxAsNode(peerCluster) : peer;
+    const axis = classifyAxis(pivotNode, peerForAxis);
     if (axis === 'overlap') {
-      overlapItems.push({ ref: e.ref, peer, isOutgoing });
+      overlapItems.push({ ref: e.ref, peer, isOutgoing, peerCluster });
     } else {
-      const side = sideOnAxis(pivotNode, peer, axis);
-      bySide[side].push({ ref: e.ref, peer, isOutgoing });
+      const side = sideOnAxis(pivotNode, peerForAxis, axis);
+      bySide[side].push({ ref: e.ref, peer, isOutgoing, peerCluster });
     }
   }
 
@@ -398,9 +412,13 @@ export function buildSideAwareCurvesForNode(
   // outward normal so the basis curve has a defined tangent.
   for (const it of overlapItems) {
     const pivotCenter = { x: pivotNode.x ?? 0, y: pivotNode.y ?? 0 };
-    const peerCenter  = { x: it.peer.x  ?? 0, y: it.peer.y  ?? 0 };
+    const peerCenter  = it.peerCluster
+      ? { x: it.peerCluster.x + it.peerCluster.w / 2, y: it.peerCluster.y + it.peerCluster.h / 2 }
+      : { x: it.peer.x ?? 0, y: it.peer.y ?? 0 };
     const pivotAnchor = clipToBorder(pivotNode, peerCenter);
-    const peerAnchor  = clipToBorder(it.peer,   pivotCenter);
+    const peerAnchor  = it.peerCluster
+      ? clipToClusterRect(it.peerCluster, pivotCenter)
+      : clipToBorder(it.peer, pivotCenter);
     const pivotStub = stubAlongNormal(pivotCenter, pivotAnchor, stubDist);
     const peerStub  = stubAlongNormal(peerCenter,  peerAnchor,  stubDist);
     const pts = it.isOutgoing
@@ -419,11 +437,17 @@ export function buildSideAwareCurvesForNode(
     const items = bySide[side];
     if (items.length === 0) continue;
     const horizontal = side === 'top' || side === 'bottom';
-    items.sort((a, b) =>
-      horizontal
-        ? (a.peer.x ?? 0) - (b.peer.x ?? 0)
-        : (a.peer.y ?? 0) - (b.peer.y ?? 0),
-    );
+    // Use cluster center for sorting when peer is cluster-anchored, else
+    // the leaf node's center.
+    const peerSortKey = (it: Item) => {
+      if (it.peerCluster) {
+        return horizontal
+          ? it.peerCluster.x + it.peerCluster.w / 2
+          : it.peerCluster.y + it.peerCluster.h / 2;
+      }
+      return horizontal ? (it.peer.x ?? 0) : (it.peer.y ?? 0);
+    };
+    items.sort((a, b) => peerSortKey(a) - peerSortKey(b));
 
     const span = horizontal ? hw * 2 * 0.8 : hh * 2 * 0.8;
     const n = items.length;
@@ -455,11 +479,14 @@ export function buildSideAwareCurvesForNode(
                             : 'left';
       // Same shape-aware clip for the peer anchor. Aim along the peer's
       // OUTWARD direction at the peer's bbox center on that side; clipToBorder
-      // returns the actual outline intersection.
-      const pcx = items[i].peer.x ?? 0;
-      const pcy = items[i].peer.y ?? 0;
-      const phw = (items[i].peer.width ?? 80) / 2;
-      const phh = (items[i].peer.height ?? 40) / 2;
+      // returns the actual outline intersection. When the peer is cluster-
+      // anchored, use the cluster bbox + clipToClusterRect so the anchor
+      // lands on the drawn cluster border rather than the leaf shape.
+      const peerCluster = items[i].peerCluster;
+      const pcx = peerCluster ? peerCluster.x + peerCluster.w / 2 : (items[i].peer.x ?? 0);
+      const pcy = peerCluster ? peerCluster.y + peerCluster.h / 2 : (items[i].peer.y ?? 0);
+      const phw = peerCluster ? peerCluster.w / 2 : (items[i].peer.width ?? 80) / 2;
+      const phh = peerCluster ? peerCluster.h / 2 : (items[i].peer.height ?? 40) / 2;
       let peerVirtual: { x: number; y: number };
       switch (peerSide) {
         case 'top':    peerVirtual = { x: pcx,           y: pcy - phh * 2 }; break;
@@ -467,7 +494,9 @@ export function buildSideAwareCurvesForNode(
         case 'left':   peerVirtual = { x: pcx - phw * 2, y: pcy            }; break;
         case 'right':  peerVirtual = { x: pcx + phw * 2, y: pcy            }; break;
       }
-      const peerAnchor = clipToBorder(items[i].peer, peerVirtual);
+      const peerAnchor = peerCluster
+        ? clipToClusterRect(peerCluster, peerVirtual)
+        : clipToBorder(items[i].peer, peerVirtual);
       const pivotStub = stubFromSide(side,     pivotAnchor, stubDist);
       const peerStub  = stubFromSide(peerSide, peerAnchor,  stubDist);
       const pts = items[i].isOutgoing
@@ -477,6 +506,20 @@ export function buildSideAwareCurvesForNode(
     }
   }
   return out;
+}
+
+// Wrap a cluster bbox as a virtual IRNode for classifyAxis / sideOnAxis. Only
+// the fields those helpers read (x, y, width, height) are populated.
+function bboxAsNode(b: BBox): IRNode {
+  return {
+    id: '',
+    label: '',
+    shape: 'rect',
+    x: b.x + b.w / 2,
+    y: b.y + b.h / 2,
+    width: b.w,
+    height: b.h,
+  };
 }
 
 // Short stub from `anchor` along the outward direction (anchor - center).
@@ -603,7 +646,7 @@ export function renderFull(ir: IR, mountEl: SVGElement, interactive = false, ori
   defs.appendChild(marker);
   mountEl.appendChild(defs);
 
-  const bboxMap = computeSubgraphBboxes(ir);
+  const bboxMap = computeClusterBboxes(ir);
 
   // Layer 1: subgraphs
   const sgGroup = el('g');
@@ -870,6 +913,12 @@ export function updateNodePosition(
     .map(k => ({ key: k, edge: meta.edgeMap.get(k) }))
     .filter((e): e is { key: string; edge: IREdge } => !!e.edge);
 
+  // Bbox map for cluster-anchored peers — used by BOTH branches so the drag
+  // preview's cluster-side endpoint stays on the drawn cluster border rather
+  // than snapping to the rewritten leaf. Recomputed each tick because the
+  // pivot's new position changes the cluster's bbox.
+  const clusterBboxes = ir.subgraphs.length > 0 ? computeClusterBboxes(ir) : undefined;
+
   // Drag preview is branched by edgeMode so we can compare the three
   // strategies live without a layout reset.
   //   • 'side-aware' / 'astar' — distributed side-aware curves (current).
@@ -883,10 +932,17 @@ export function updateNodePosition(
       const sy = fromNode.y ?? 0;
       const tx = toNode.x   ?? 0;
       const ty = toNode.y   ?? 0;
-      const pts = [{ x: sx, y: sy }, { x: tx, y: ty }];
+      // For cluster-anchored peers, project the centre of the OTHER endpoint
+      // onto the cluster bbox — mirrors layout.ts edge writeback and keeps
+      // the dragged line stuck to the cluster border.
+      const fromBbox = edge.fromCluster ? clusterBboxes?.get(edge.fromCluster) : undefined;
+      const toBbox   = edge.toCluster   ? clusterBboxes?.get(edge.toCluster)   : undefined;
+      const start = fromBbox ? clipToClusterRect(fromBbox, { x: tx, y: ty }) : { x: sx, y: sy };
+      const end   = toBbox   ? clipToClusterRect(toBbox,   { x: sx, y: sy }) : { x: tx, y: ty };
+      const pts = [start, end];
       meta.displayPoints.set(key, pts);
       meta.displayMode.set(key, 'straight');
-      const dStr = `M ${sx} ${sy} L ${tx} ${ty}`;
+      const dStr = `M ${start.x} ${start.y} L ${end.x} ${end.y}`;
       const pathEl = mountEl.querySelector(`[data-edge-key="${key}"] .edge-path`) as SVGPathElement | null;
       if (pathEl) {
         pathEl.setAttribute('d', dStr);
@@ -907,8 +963,12 @@ export function updateNodePosition(
   const nodesById = new Map(ir.nodes.map(n => [n.id, n]));
   const curves = buildSideAwareCurvesForNode(
     node,
-    edgeEntries.map(e => ({ from: e.edge.from, to: e.edge.to, ref: e.key })),
+    edgeEntries.map(e => ({
+      from: e.edge.from, to: e.edge.to, ref: e.key,
+      fromCluster: e.edge.fromCluster, toCluster: e.edge.toCluster,
+    })),
     nodesById,
+    clusterBboxes,
   );
 
   for (const { key } of edgeEntries) {
@@ -1065,7 +1125,7 @@ export function refreshEdgesFromLayout(mountEl: SVGElement): void {
 
 function updateSubgraphRects(meta: MountMeta): void {
   if (meta.ir.subgraphs.length === 0) return;
-  const bboxMap = computeSubgraphBboxes(meta.ir);
+  const bboxMap = computeClusterBboxes(meta.ir);
   for (const sg of meta.ir.subgraphs) {
     const bbox = bboxMap.get(sg.id);
     const rect = meta.subgraphRects.get(sg.id);
@@ -1080,51 +1140,6 @@ function updateSubgraphRects(meta: MountMeta): void {
       text.setAttribute('y', String(bbox.y + 14));
     }
   }
-}
-
-function computeSubgraphBboxes(ir: IR): Map<string, BBox> {
-  const map = new Map<string, BBox>();
-  const sgById = new Map(ir.subgraphs.map(sg => [sg.id, sg]));
-
-  function bboxForSg(sgId: string): BBox | null {
-    if (map.has(sgId)) return map.get(sgId)!;
-    const sg = sgById.get(sgId);
-    if (!sg) return null;
-
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-
-    for (const childId of sg.children) {
-      const n = ir.nodes.find(n => n.id === childId);
-      if (!n || n.x == null || n.y == null || n.width == null || n.height == null) continue;
-      minX = Math.min(minX, n.x - n.width / 2);
-      minY = Math.min(minY, n.y - n.height / 2);
-      maxX = Math.max(maxX, n.x + n.width / 2);
-      maxY = Math.max(maxY, n.y + n.height / 2);
-    }
-
-    for (const nested of ir.subgraphs.filter(s => s.parent === sgId)) {
-      const nb = bboxForSg(nested.id);
-      if (!nb) continue;
-      minX = Math.min(minX, nb.x);
-      minY = Math.min(minY, nb.y);
-      maxX = Math.max(maxX, nb.x + nb.w);
-      maxY = Math.max(maxY, nb.y + nb.h);
-    }
-
-    if (!isFinite(minX)) return null;
-
-    const bbox: BBox = {
-      x: minX - PADDING,
-      y: minY - PADDING - 10,
-      w: maxX - minX + PADDING * 2,
-      h: maxY - minY + PADDING * 2 + 10,
-    };
-    map.set(sgId, bbox);
-    return bbox;
-  }
-
-  for (const sg of ir.subgraphs) bboxForSg(sg.id);
-  return map;
 }
 
 function sortSubgraphsOuterFirst(subgraphs: IRSubgraph[]): IRSubgraph[] {

@@ -5,6 +5,7 @@ import { layout as dagreLayout } from 'dagre-d3-es/src/dagre/index.js';
 import type { IR, IRNode, NodeShape } from './types.js';
 import { clipToBorder, clipToClusterRect } from './border.js';
 import { astarSettings } from './astarSettings.js';
+import { computeClusterBboxes } from './cluster-bbox.js';
 
 // Round up to a multiple of `step`. Used to size nodes and snap positions to
 // the A* grid so every node boundary lands on a cell line.
@@ -169,24 +170,24 @@ function sortNodesByHierarchy(ir: IR): string[] {
   // insertion order:
   //   1. ALL cluster nodes are inserted first, in a single DFS pass through
   //      the cluster hierarchy, BEFORE any leaf nodes.
-  //   2. Subgraph siblings are visited in REVERSE declaration order — Mermaid
-  //      visits Storage_L2 (declared 2nd) before Services_L2 (1st), and
-  //      CacheLayer_L3 (declared 2nd) before PrimaryDB_L3 (1st), at every
-  //      level of the hierarchy.
-  // Property (2) is the empirical source of the Storage_L2 L/R divergence:
-  // when two clusters have no edges between them at their level (Storage_L2's
-  // case), dagre's barycenter tiebreaker falls back to insertion order. Cache
-  // being inserted first puts CacheLayer LEFT — matching Mermaid v11.
-  // Leaves are emitted after all clusters via a second DFS in declaration
-  // order (mirrors the leaf order observed in Mermaid's dump).
+  //   2. The cluster DFS and the leaf DFS use DIFFERENT sibling orders:
+  //      • cluster section visits siblings in REVERSE declaration order.
+  //      • leaf section visits the same siblings in DECLARATION order.
+  // The asymmetry on (2) is empirical — see the dump. It's surprising enough
+  // that the code below takes the order as an explicit parameter rather than
+  // implying it via "which map you read from", so the asymmetry is visible
+  // at the call site instead of hidden in a pre-reversed data structure.
+  //
+  // Why (2) matters: when two clusters at the same level have no edges
+  // between them (e.g. fixture_nested's Storage_L2 children Cache/Primary),
+  // dagre's barycenter tiebreaker falls back to insertion order. The reverse
+  // cluster order puts Cache LEFT and Primary RIGHT — matching Mermaid v11.
   const subgraphsByParent = new Map<string | undefined, string[]>();
   for (const sg of ir.subgraphs) {
     const key = sg.parent;
     if (!subgraphsByParent.has(key)) subgraphsByParent.set(key, []);
     subgraphsByParent.get(key)!.push(sg.id);
   }
-  for (const list of subgraphsByParent.values()) list.reverse();
-
   const leavesByParent = new Map<string | undefined, string[]>();
   for (const n of ir.nodes) {
     const key = n.parent;
@@ -194,24 +195,33 @@ function sortNodesByHierarchy(ir: IR): string[] {
     leavesByParent.get(key)!.push(n.id);
   }
 
+  // Child subgraph ids of `parent`, in the requested visit order. Pristine
+  // declaration order is what the map holds; `reversed` returns a fresh
+  // reversed copy so the map itself stays canonical.
+  type SiblingOrder = 'declaration' | 'reversed';
+  function childSubgraphs(parent: string | undefined, order: SiblingOrder): string[] {
+    const list = subgraphsByParent.get(parent) ?? [];
+    return order === 'reversed' ? list.slice().reverse() : list;
+  }
+
   const out: string[] = [];
 
+  // CLUSTER section — siblings REVERSED. Load-bearing for property (2) above.
   function emitClusters(parent: string | undefined): void {
-    for (const sgId of subgraphsByParent.get(parent) ?? []) {
+    for (const sgId of childSubgraphs(parent, 'reversed')) {
       out.push(sgId);
       emitClusters(sgId);
     }
   }
+
+  // LEAF section — leaves of each cluster, then recurse into nested clusters
+  // in DECLARATION order. Opposite asymmetry from emitClusters by design.
   function emitLeaves(parent: string | undefined): void {
     for (const leafId of leavesByParent.get(parent) ?? []) {
       out.push(leafId);
     }
-    // Recurse into subgraphs in DECLARATION order (NOT reversed) — Mermaid's
-    // leaf section visits clusters in declaration order, opposite of how it
-    // orders the cluster section. Use ir.subgraphs filter to get declaration
-    // order rather than the reversed subgraphsByParent map.
-    for (const sg of ir.subgraphs) {
-      if ((sg.parent ?? null) === (parent ?? null)) emitLeaves(sg.id);
+    for (const sgId of childSubgraphs(parent, 'declaration')) {
+      emitLeaves(sgId);
     }
   }
 
@@ -286,18 +296,8 @@ export function layout(ir: IR): IR {
   }
 
   for (const e of ir.edges) {
-    {
-      const { w, h } = e.label ? edgeLabelSize(e.label) : { w: 0, h: 0 };
-      g.setEdge(e.from, e.to, { label: e.label || '', weight: 1, width: w, height: h });
-    }
-  }
-
-  // Temporary diagnostic: when `?dump=1`, capture our dagre-d3-es input graph
-  // before layout for field-by-field diffing against Mermaid's. Remove once
-  // the fixture_nested / fixture200 divergence is understood.
-  if (typeof window !== 'undefined' &&
-      new URLSearchParams(window.location.search).get('dump') === '1') {
-    (window as any).__oursGraphDump = dumpGraph(g);
+    const { w, h } = e.label ? edgeLabelSize(e.label) : { w: 0, h: 0 };
+    g.setEdge(e.from, e.to, { label: e.label || '', weight: 1, width: w, height: h });
   }
 
   dagreLayout(g, {});
@@ -316,10 +316,8 @@ export function layout(ir: IR): IR {
   if (edgesChanged) {
     for (const e of g.edges()) g.removeEdge(e);
     for (const e of ir.edges) {
-      {
       const { w, h } = e.label ? edgeLabelSize(e.label) : { w: 0, h: 0 };
       g.setEdge(e.from, e.to, { label: e.label || '', weight: 1, width: w, height: h });
-    }
     }
     dagreLayout(g, {});
   }
@@ -354,16 +352,21 @@ export function layout(ir: IR): IR {
   // stamped by parser-adapter.ts), clip to the cluster's drawn bbox instead
   // of the leaf shape's outline — so the edge visually terminates at the
   // cluster border the user sees, matching Mermaid's behavior.
+  //
+  // Bbox map is computed once for the whole IR — shared with renderer.ts so
+  // the clip target is byte-identical to the rectangle drawn on screen.
+  const clusterBboxes = computeClusterBboxes(ir);
+  const nodesById = new Map(ir.nodes.map(n => [n.id, n]));
   for (const e of ir.edges) {
     const ge = g.edge(e.from, e.to);
     if (ge && ge.points) {
       let pts = (ge.points as { x: number; y: number }[]).map(p => ({ x: p.x, y: p.y }));
-      const fromNode = ir.nodes.find(n => n.id === e.from);
-      const toNode   = ir.nodes.find(n => n.id === e.to);
+      const fromNode = nodesById.get(e.from);
+      const toNode   = nodesById.get(e.to);
       if (pts.length >= 2 && fromNode && toNode) {
         // Start endpoint: cluster border if rewritten from subgraph, else leaf shape.
         if (e.fromCluster) {
-          const bbox = clusterBboxFromIR(e.fromCluster, ir);
+          const bbox = clusterBboxes.get(e.fromCluster);
           if (bbox) {
             // Drop dagre waypoints that fall INSIDE the cluster — they were
             // routed for the leaf-anchored edge and cause curveBasis loops
@@ -380,7 +383,7 @@ export function layout(ir: IR): IR {
         }
         // End endpoint: same dual path.
         if (e.toCluster) {
-          const bbox = clusterBboxFromIR(e.toCluster, ir);
+          const bbox = clusterBboxes.get(e.toCluster);
           if (bbox) {
             while (pts.length > 2 && pointInBbox(pts[pts.length - 2], bbox)) {
               pts.splice(pts.length - 2, 1);
@@ -404,14 +407,6 @@ export function layout(ir: IR): IR {
 
   return ir;
 }
-
-// Mirror of renderer.ts:computeSubgraphBboxes. Computes the cluster's DRAWN
-// bbox from its descendant leaves' positions, recursively, including the same
-// PADDING and label-offset (+10 on Y) the renderer uses. Returns null if the
-// cluster is empty or its leaves haven't been positioned yet. Kept in sync
-// with the renderer so cluster-anchored edges clip to exactly the rectangle
-// the user sees on screen.
-const CLUSTER_BBOX_PADDING = 20;
 
 // Inclusive bbox containment — used by the edge write-back to discard
 // dagre waypoints inside a cluster we're about to clip the endpoint out of.
@@ -451,6 +446,26 @@ function collectClusterLeaves(clusterId: string, ir: IR, out: IRNode[]): void {
 // endpoints is a descendant of the cluster (XOR), the edge crosses the
 // boundary. Cluster-endpoint edges themselves don't count — the cluster
 // id is not a descendant of itself in Mermaid's isDescendant.
+//
+// ┌─── LOAD-BEARING INVARIANT ─────────────────────────────────────────────┐
+// │ `e.fromCluster` / `e.toCluster` must ALWAYS equal the pre-rewrite      │
+// │ original endpoint when present; absent means the edge had a leaf       │
+// │ endpoint originally. Stamped by parser-adapter.ts (parseToIR loop).    │
+// │                                                                        │
+// │ Any IR pass that rewrites `e.from` / `e.to` MUST either preserve       │
+// │ `fromCluster` / `toCluster` unchanged, or clear them explicitly.       │
+// │ Silently dropping these annotations breaks:                            │
+// │   • this function's externalConnections check (false negative →        │
+// │     wrong anchor choice, e.g. cyc3 Halt drifts off the cluster).       │
+// │   • layout.ts edge writeback (clip target falls back to leaf shape).   │
+// │   • renderer.ts drag preview (line snaps to leaf during drag).         │
+// │   • routing.ts A* trim (path terminates on leaf, not cluster border).  │
+// │                                                                        │
+// │ Sites that must maintain the invariant:                                │
+// │   • effective-ir.ts:80–98 — collapse/expand edge remap (had one bug    │
+// │     here already; field preservation lines 95–97 are load-bearing).   │
+// │ Add new sites here as they appear.                                     │
+// └────────────────────────────────────────────────────────────────────────┘
 function reanchorClusterEdges(ir: IR, g: any): boolean {
   let changed = false;
   const descendants = buildDescendantsMap(ir);
@@ -541,56 +556,4 @@ function buildDescendantsMap(ir: IR): Map<string, Set<string>> {
     out.set(sg.id, desc);
   }
   return out;
-}
-function clusterBboxFromIR(
-  clusterId: string,
-  ir: IR,
-): { x: number; y: number; w: number; h: number } | null {
-  const sg = ir.subgraphs.find(s => s.id === clusterId);
-  if (!sg) return null;
-  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-  for (const childId of sg.children) {
-    const n = ir.nodes.find(nn => nn.id === childId);
-    if (!n || n.x == null || n.y == null || n.width == null || n.height == null) continue;
-    minX = Math.min(minX, n.x - n.width / 2);
-    minY = Math.min(minY, n.y - n.height / 2);
-    maxX = Math.max(maxX, n.x + n.width / 2);
-    maxY = Math.max(maxY, n.y + n.height / 2);
-  }
-  for (const nested of ir.subgraphs.filter(s => s.parent === clusterId)) {
-    const nb = clusterBboxFromIR(nested.id, ir);
-    if (!nb) continue;
-    minX = Math.min(minX, nb.x);
-    minY = Math.min(minY, nb.y);
-    maxX = Math.max(maxX, nb.x + nb.w);
-    maxY = Math.max(maxY, nb.y + nb.h);
-  }
-  if (!isFinite(minX)) return null;
-  return {
-    x: minX - CLUSTER_BBOX_PADDING,
-    y: minY - CLUSTER_BBOX_PADDING - 10,
-    w: maxX - minX + CLUSTER_BBOX_PADDING * 2,
-    h: maxY - minY + CLUSTER_BBOX_PADDING * 2 + 10,
-  };
-}
-
-// Temporary diagnostic for fixture_nested / fixture200 parity investigation.
-// Dumps the dagre-d3-es input graph as a plain object so it can be compared
-// to Mermaid's `Graph before layout:` JSON. Delete this helper once the
-// barycenter divergence is understood.
-function dumpGraph(g: any) {
-  // Deep-clone via JSON round-trip — graphlib value objects are mutated in
-  // place by dagreLayout, so we must snapshot them at dump time.
-  return JSON.parse(JSON.stringify({
-    graph: g.graph(),
-    nodes: g.nodes().map((id: string) => ({
-      id,
-      value: g.node(id),
-      parent: g.parent(id) ?? null,
-    })),
-    edges: g.edges().map((e: any) => ({
-      v: e.v, w: e.w, name: e.name,
-      value: g.edge(e),
-    })),
-  }));
 }
