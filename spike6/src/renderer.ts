@@ -681,7 +681,13 @@ export function renderFull(ir: IR, mountEl: SVGElement, interactive = false, ori
     // matching font. Title font does NOT affect layout (clusters are sized by
     // content+margins, not by label width), so this is purely cosmetic.
     const text = el('text') as SVGTextElement;
-    text.setAttribute('x', String(bbox.x + bbox.w / 2));
+    // Centre the BARE label like Mermaid (which has no caret): with text-anchor
+    // middle on "label  ▾" the trailing caret pulls the visible title left of
+    // centre, so shift the anchor right by half the width of the "  ▾" suffix.
+    // Stored on the element so the drag-reposition path applies the same shift
+    // without re-measuring.
+    const labelDx = (measureLabel(sg.label + '  ▾').w - measureLabel(sg.label).w) / 2;
+    text.setAttribute('x', String(bbox.x + bbox.w / 2 + labelDx));
     text.setAttribute('y', String(bbox.y + 18));
     text.setAttribute('text-anchor', 'middle');
     text.setAttribute('font-size', '16');
@@ -689,6 +695,7 @@ export function renderFull(ir: IR, mountEl: SVGElement, interactive = false, ori
     text.setAttribute('fill', '#333333');
     text.setAttribute('class', 'sg-header');
     text.textContent = sg.label + '  ▾';
+    (text as unknown as { __labelDx: number }).__labelDx = labelDx;
 
     g.appendChild(rect);
     g.appendChild(text);
@@ -1144,7 +1151,8 @@ function updateSubgraphRects(meta: MountMeta): void {
     rect.setAttribute('width', String(bbox.w));
     rect.setAttribute('height', String(bbox.h));
     if (text) {
-      text.setAttribute('x', String(bbox.x + bbox.w / 2));
+      const dx = (text as unknown as { __labelDx?: number }).__labelDx ?? 0;
+      text.setAttribute('x', String(bbox.x + bbox.w / 2 + dx));
       text.setAttribute('y', String(bbox.y + 18));
     }
   }

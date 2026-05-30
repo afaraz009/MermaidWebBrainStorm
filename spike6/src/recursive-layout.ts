@@ -117,6 +117,22 @@ export function layoutRecursive(ir: IR, external: Set<string>): IR {
   const parentOf = (id: string): string | undefined =>
     sgById.has(id) ? sgById.get(id)!.parent : nodeById.get(id)?.parent;
 
+  // Cross-axis half-margin for a cluster's compound box. Mermaid's dagre reserves
+  // (nodesep+edgesep)/2 = 35 when the border sits next to a REAL node (a leaf or
+  // an extracted-cluster PLACEHOLDER), but only edgesep = 20 when it sits next to
+  // another COMPOUND (border dummy ↔ border dummy). A cluster's content is a
+  // compound exactly when it has a direct child subgraph that is NOT extracted
+  // (external or non-extracted) — those are laid out as dagre compounds in the
+  // same graph. e.g. cyc3 `Apps` (compound children ProdA/ProdB) → 20, but
+  // `Productivity` (its only child `Apps` is an extracted placeholder = real
+  // node) → 35. For a fully-encapsulated graph this equals the old
+  // `nonExtBox.size > 0` test (external is empty), so those fixtures are
+  // unchanged.
+  const crossHalfFor = (cid: string | undefined): number =>
+    ir.subgraphs.some(sg => sg.parent === cid && !extracted.has(sg.id))
+      ? NESTED_CROSS_HALF_MARGIN
+      : CROSS_HALF_MARGIN;
+
   // Effective parent for edge placement: skip every NON-extracted cluster
   // (both `external` flat clusters and `nonExtracted` transparent ones), which
   // are all laid out inside their nearest extracted ancestor's dagre call — none
@@ -391,15 +407,32 @@ export function layoutRecursive(ir: IR, external: Set<string>): IR {
       nonExtBox.set(id, { x0: a0 - mx, y0: b0 - my, x1: a1 + mx, y1: b1 + my });
     }
 
-    // A DIRECT external (flat) child cluster contributes its DRAWN rect — the
-    // same legacy cluster-bbox padding (CLUSTER_PADDING + top label offset,
-    // recursive over any nested external clusters) that the final global
-    // computeClusterBboxes will re-derive for it (external clusters get no
-    // clusterMargins entry). Using that drawn rect here — NOT dagre's larger
-    // compound box — is what keeps THIS cluster's placeholder == its global
-    // drawn rect: both enclose the same legacy-padded external rects. Every leaf
-    // / nested cluster owned by a direct external child is therefore covered and
-    // must be skipped in the union below. Empty in the fully-extracted case.
+    // EXTERNAL (flat) child clusters at this level are dagre COMPOUNDS in this
+    // graph, so — exactly like extracted/non-extracted clusters — their drawn
+    // rect is Mermaid's compound box, not the legacy cluster-bbox padding. Record
+    // the SAME margin law (rank half-margin = ranksep/2; cross half-margin = 35,
+    // or 20 when the sole child is a nested compound) keyed by cluster id, using
+    // THIS level's ranksep + direction (external clusters share them — their own
+    // declared direction is ignored). This is what makes e.g. cyc3 Reviewer/Editor
+    // reserve ranksep/2 = 50px above/below their leaves (matching Mermaid) instead
+    // of 20–30. Only fires on the recursive path; the FLAT path leaves
+    // ir.clusterMargins unset, so the locked flat fixtures are untouched.
+    for (const id of ordered) {
+      if (!(sgById.has(id) && external.has(id))) continue;
+      const crossHalf = crossHalfFor(id);
+      clusterMargins.set(id, {
+        x: horizIsRank ? rankHalf : crossHalf,
+        y: horizIsRank ? crossHalf : rankHalf,
+      });
+    }
+
+    // A DIRECT external (flat) child cluster contributes its DRAWN rect, derived
+    // from the recorded compound-box margins (recursive over nested external
+    // clusters) — the SAME rect the final global computeClusterBboxes re-derives
+    // for it. Using it here keeps THIS cluster's placeholder == its global drawn
+    // rect: both enclose the same margin-sized external rects. Every leaf / nested
+    // cluster owned by a direct external child is therefore covered and must be
+    // skipped in the union below. Empty in the fully-extracted case.
     const externalDrawnRect = (cid: string): { x0: number; y0: number; x1: number; y1: number } | null => {
       let a0 = Infinity, b0 = Infinity, a1 = -Infinity, b1 = -Infinity;
       let found = false;
@@ -426,7 +459,13 @@ export function layoutRecursive(ir: IR, external: Set<string>): IR {
         found = true;
       }
       if (!found) return null;
-      return { x0: a0 - CLUSTER_PADDING, y0: b0 - CLUSTER_PADDING - CLUSTER_LABEL_OFFSET, x1: a1 + CLUSTER_PADDING, y1: b1 + CLUSTER_PADDING };
+      // Compound-box margins (recorded above) — symmetric, NO label offset, like
+      // Mermaid. Fall back to legacy padding only if a margin is somehow missing.
+      const m = clusterMargins.get(cid);
+      const mx = m ? m.x : CLUSTER_PADDING;
+      const myTop = m ? m.y : CLUSTER_PADDING + CLUSTER_LABEL_OFFSET;
+      const myBot = m ? m.y : CLUSTER_PADDING;
+      return { x0: a0 - mx, y0: b0 - myTop, x1: a1 + mx, y1: b1 + myBot };
     };
     const extBox = new Map<string, { x0: number; y0: number; x1: number; y1: number }>();
     const coveredByExt = new Set<string>();
@@ -477,13 +516,12 @@ export function layoutRecursive(ir: IR, external: Set<string>): IR {
     const contentH = maxY - minY;
 
     // Size the compound box like Mermaid: rank-axis half-margin = ranksep/2,
-    // cross-axis half-margin = (nodesep+edgesep)/2, mapped to x/y by direction.
-    // When this cluster's sole member is a non-extracted nested compound, the
-    // cross-axis half-margin shrinks to edgesep (dummy↔dummy borders). Record
-    // the margins so computeClusterBboxes paints the SAME rect globally (drawn
-    // rect == placeholder). The root (clusterId undefined) draws no rect and its
-    // returned size is unused, so skip recording for it.
-    const crossHalf = nonExtBox.size > 0 ? NESTED_CROSS_HALF_MARGIN : CROSS_HALF_MARGIN;
+    // cross-axis half-margin from `crossHalfFor` (35 next to a real node / 20 next
+    // to a compound child — see helper). Record the margins so
+    // computeClusterBboxes paints the SAME rect globally (drawn rect ==
+    // placeholder). The root (clusterId undefined) draws no rect and its returned
+    // size is unused, so skip recording for it.
+    const crossHalf = crossHalfFor(clusterId);
     const marginX = horizIsRank ? rankHalf : crossHalf;
     const marginY = horizIsRank ? crossHalf : rankHalf;
     if (clusterId !== undefined) clusterMargins.set(clusterId, { x: marginX, y: marginY });

@@ -214,9 +214,15 @@ Implementation (`layout.ts` gate + `recursive-layout.ts`):
 2. **External child clusters laid out FLAT in-place** at a mixed level: added as
    dagre compound nodes (`setNode` + a `setParent` pass) inside the nearest
    extracted ancestor's graph — Mermaid's "non recursive path"
-   (`graph.children(v).length > 0`). They get the legacy `cluster-bbox` padding
-   (no `clusterMargins` entry); their drawn rect feeds the parent's content bbox
-   via a recursive `externalDrawnRect`, so placeholder == drawn rect still holds.
+   (`graph.children(v).length > 0`). They are sized to Mermaid's **compound box**
+   (same margin law as extracted clusters: rank half-margin = ranksep/2, cross
+   half-margin from `crossHalfFor`), recorded in `clusterMargins`; their drawn
+   rect feeds the parent's content bbox via a recursive `externalDrawnRect`, so
+   placeholder == drawn rect holds. (Originally these kept legacy `cluster-bbox`
+   padding; that left cyc3 Reviewer/Editor with too little top/bottom space, so
+   they were switched to compound-box margins — safe because this only runs on the
+   recursive path; the FLAT path leaves `ir.clusterMargins` unset so the locked
+   flat fixtures are untouched.)
 3. **Edge placement generalised**: logical endpoint uses the cluster id only for
    EXTRACTED clusters (external → real anchor leaf); `effectiveParentOf` now skips
    every non-extracted cluster; the cluster-touching edge reorder also catches
@@ -254,11 +260,21 @@ Verification (Playwright on :5190, authorized):
 - Collapse-all/expand-all round-trips cleanly on cyc3 (no errors, no NaN).
 - `tsc --noEmit` silent, `vite build` passes, no console errors.
 
-Sizes: our external clusters (ProdA/ProdB/ControlPlane/DataPlane/Stage/DiamondScc)
-keep legacy padding, so cyc3/cyc4 render a bit more compact than Mermaid — the
-encapsulated `Productivity`/`Apps`/`Pipeline` get Mermaid-sized compound boxes via
-HANDOFF-1's margins. Matching the flat externals to Mermaid's box would un-lock
-every flat fixture — out of scope, as the handoff noted.
+Sizes (refined 2026-05-31): the flat external clusters
+(ProdA/ProdB/ControlPlane/DataPlane/Stage/DiamondScc) are now ALSO drawn at
+Mermaid's dagre compound box (not legacy padding) — they're real dagre compounds
+in the level's graph, so the same margin law applies. This closed the visible gap
+the user flagged (too little space below/above the leaf clusters). The cross-axis
+half-margin had to be corrected: it is `(nodesep+edgesep)/2 = 35` next to a REAL
+node (leaf or extracted placeholder) but `edgesep = 20` next to a COMPOUND child
+(border dummy ↔ border dummy) — see `crossHalfFor`. e.g. cyc3 `Apps` (compound
+children ProdA/ProdB) → 20, `Productivity` (extracted-placeholder child) → 35.
+Result: cyc3 cluster HEIGHTS now match Mermaid (ProdB 293, ControlPlane 278.4,
+DataPlane 193 exact; Apps/Productivity +4.2 from cylinder leaf height). The
+remaining WIDTH gap (≈10–25px narrower) is the pre-existing short-label `rect`
+baseW=100-vs-Mermaid-83 leaf residual (shared with the locked flat fixtures, out
+of scope). This sizing change is recursive-path-only, so all 11 flat + 5
+fully-encapsulated fixtures stayed **byte-identical** (re-verified 5176-vs-5175).
 
 ### Remaining / deferred (honest status)
 - `reserve_fallback` L1/L2 flip: its `Cluster` is FULLY external (Start→L2 leaf
@@ -270,6 +286,23 @@ every flat fixture — out of scope, as the handoff noted.
   (shared with locked flat fixtures), surfaces as a few px on clusters whose
   width is driven by short-label rects. Out of HANDOFF-1 scope.
 - Mixed-graph partial encapsulation (cyc3/cyc4) — **DONE** (HANDOFF-2 RESOLVED above).
+- **Flat-path vs Mermaid parity (`fixture_nested` et al.)** — DEFERRED by choice
+  (2026-05-31, user opted to keep the flat path locked). All-external graphs go
+  through the legacy FLAT engine (in BOTH Mermaid and us), which diverges from
+  Mermaid in two measured ways on `fixture_nested`: (a) a cluster-entering edge
+  label (`auth`/`payment` → Auth/Payment Subsystem) lands INSIDE the cluster's top
+  band and collides with the cluster TITLE, whereas Mermaid drops it in the gap
+  ABOVE the cluster border; (b) internal ranksep is a touch tighter than Mermaid
+  (`Create Session→Session Cache` ≈169 vs ≈190 scale-adjusted). Root cause is the
+  flat path's cluster border position + spacing, NOT a HANDOFF-2 regression
+  (`fixture_nested` is byte-identical to baseline). Closing it means bringing the
+  flat path to Mermaid parity — most cleanly by routing all-external graphs through
+  the recursive engine (it now sizes clusters to the compound box) and re-baselining
+  every flat fixture — i.e. the "replace the flat path" project the port deferred.
+- Cluster TITLE centering (renderer, 2026-05-31): the inline `▾` collapse caret was
+  pulling the centred `label  ▾` title left of the cluster centre; now the anchor is
+  shifted right by half the caret-suffix width so the bare label reads centred like
+  Mermaid. Cosmetic only (labels don't affect layout); applies to both paths.
 
 ### Before/after harness (established Stage 2)
 - **Port 5190 = this worktree** (`npx vite --port 5190 --strictPort`).
