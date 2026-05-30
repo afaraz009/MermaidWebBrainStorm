@@ -1,7 +1,18 @@
 # Handoff 2 — Mixed-graph partial encapsulation (cyc3 / cyc4)
 
-**Status:** deferred, NOT a regression. The affected fixtures (`fixture_cyclic_nested_3`,
-`fixture_cyclic_nested_4`) currently PASS their locked checkpoints via the flat
+**Status: ✅ RESOLVED (2026-05-31).** cyc3/cyc4 now take the recursive engine and
+are partially encapsulated, matching Mermaid. Encapsulated set parity
+(`Productivity`⊃`Apps`; `Pipeline`), locked checkpoints hold, all all-external +
+fully-encapsulated fixtures byte-identical (git-stash before/after diff), `tsc`/
+`vite build` green. Full decision trail: `../RECURSIVE_LAYOUT_LOG.md` "HANDOFF-2
+RESOLVED". Two corrections to the brief below: (a) NO reanchor pass is needed —
+Mermaid keeps external clusters' first-DFS anchor, which the parser-adapter
+already reproduces; (b) the hard part was the cycle-break ORDER — extracted
+sub-levels must use Mermaid's `copy()` node order (root keeps `buildLayoutGraph`
+order), see the log. Original brief preserved below for context.
+
+**Was:** deferred, NOT a regression. The affected fixtures (`fixture_cyclic_nested_3`,
+`fixture_cyclic_nested_4`) PASSED their locked checkpoints via the flat
 path. This task closes the remaining structural-parity gap with Mermaid for
 graphs that mix encapsulatable and external clusters.
 **Risk:** HIGH — these are LOCKED fixtures. A wrong move regresses passing

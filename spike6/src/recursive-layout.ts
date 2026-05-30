@@ -18,7 +18,7 @@ import * as graphlib from 'dagre-d3-es/src/graphlib/index.js';
 import { layout as dagreLayout } from 'dagre-d3-es/src/dagre/index.js';
 import type { IR, IRNode, IREdge, Direction } from './types.js';
 import { astarSettings } from './astarSettings.js';
-import { computeClusterBboxes } from './cluster-bbox.js';
+import { computeClusterBboxes, CLUSTER_PADDING, CLUSTER_LABEL_OFFSET } from './cluster-bbox.js';
 import {
   ceilTo,
   sizeForShape,
@@ -67,8 +67,12 @@ interface SubResult {
 
 export function layoutRecursive(ir: IR, external: Set<string>): IR {
   // Clusters to encapsulate = subgraphs without a boundary-crossing edge.
-  // (Stage 3 gate guarantees `external` is empty, so every cluster qualifies;
-  // written generally so Stage 5 can pass a non-empty `external`.)
+  // `external` may be non-empty (MIXED graph, e.g. cyc3/cyc4): those external
+  // clusters are NOT encapsulated — they are laid out FLAT (as dagre compounds)
+  // inside their nearest extracted ancestor's level, mirroring Mermaid's
+  // extractor (encapsulate `externalConnections === false`) + non-recursive path
+  // (everything else flat). When `external` is empty every cluster qualifies and
+  // the engine reduces to the original fully-encapsulated behaviour.
   const encapsulated = new Set(ir.subgraphs.map(sg => sg.id).filter(id => !external.has(id)));
 
   const sgById = new Map(ir.subgraphs.map(sg => [sg.id, sg]));
@@ -113,19 +117,24 @@ export function layoutRecursive(ir: IR, external: Set<string>): IR {
   const parentOf = (id: string): string | undefined =>
     sgById.has(id) ? sgById.get(id)!.parent : nodeById.get(id)?.parent;
 
-  // Effective parent for edge placement: skip non-extracted clusters, which are
-  // transparent — their leaves live in the nearest extracted ancestor's graph,
-  // so an edge inside one (e.g. Leaf1→Leaf2 inside the non-extracted L4) must be
-  // placed at that ancestor's level with the leaves themselves as endpoints.
+  // Effective parent for edge placement: skip every NON-extracted cluster
+  // (both `external` flat clusters and `nonExtracted` transparent ones), which
+  // are all laid out inside their nearest extracted ancestor's dagre call — none
+  // of them gets its own recursion level. So an edge inside an external cluster
+  // (e.g. CP_Scheduler→CP_Dispatcher inside the flat ControlPlane) is placed at
+  // the nearest EXTRACTED ancestor's level with the leaves themselves as
+  // endpoints, and an edge inside the non-extracted L4 likewise. (When the graph
+  // is fully encapsulatable, `external` is empty so this is identical to the old
+  // "skip nonExtracted only".)
   const effectiveParentOf = (id: string): string | undefined => {
     let p = parentOf(id);
-    while (p !== undefined && nonExtracted.has(p)) p = parentOf(p);
+    while (p !== undefined && !extracted.has(p)) p = parentOf(p);
     return p;
   };
 
   // Ancestor chain [id, effective-parent, …, undefined(root)] — non-extracted
-  // clusters are omitted so the LCA + per-level representative land on an
-  // extracted cluster (or a leaf), never on a transparent cluster.
+  // and external clusters are omitted so the LCA + per-level representative land
+  // on an extracted cluster (or a leaf), never on a transparent/flat cluster.
   const ancestorChain = (id: string): (string | undefined)[] => {
     const chain: (string | undefined)[] = [];
     let cur: string | undefined = id;
@@ -144,8 +153,14 @@ export function layoutRecursive(ir: IR, external: Set<string>): IR {
   // node→subgraph whole-cluster edge, lands at the right level.
   const edgesByLevel = new Map<string | undefined, { e: IREdge; repFrom: string; repTo: string }[]>();
   for (const e of ir.edges) {
-    const lf = e.fromCluster ?? e.from;
-    const lt = e.toCluster ?? e.to;
+    // Logical endpoint: a whole-cluster edge to an EXTRACTED cluster keeps the
+    // cluster id (it lands on that cluster's placeholder); a whole-cluster edge
+    // to an EXTERNAL (flat) cluster instead uses the real anchor LEAF, because a
+    // flat cluster has no single placeholder node — its leaf is a real node at
+    // the level. (When the cluster is encapsulatable, `fromCluster ?? from` and
+    // this expression agree, so the fully-extracted fixtures are unchanged.)
+    const lf = (e.fromCluster !== undefined && !external.has(e.fromCluster)) ? e.fromCluster : e.from;
+    const lt = (e.toCluster   !== undefined && !external.has(e.toCluster))   ? e.toCluster   : e.to;
     if (lf === lt) continue;
     const cf = ancestorChain(lf).reverse(); // root … lf
     const ct = ancestorChain(lt).reverse(); // root … lt
@@ -167,9 +182,57 @@ export function layoutRecursive(ir: IR, external: Set<string>): IR {
   // fixture_rl_chain: with whole-cluster edges last, Proc lands below Audit,
   // matching Mermaid). Array.sort is stable, so equal-key edges keep order.
   for (const list of edgesByLevel.values()) {
-    const touches = (x: { repFrom: string; repTo: string }) =>
-      extracted.has(x.repFrom) || extracted.has(x.repTo) ? 1 : 0;
+    // An edge "touches a cluster" when its rep is an extracted-cluster
+    // placeholder OR its original endpoint was an EXTERNAL flat cluster
+    // (fromCluster/toCluster in `external`). Mermaid's adjustClustersAndEdges
+    // removeEdge+setEdge's every such edge → they land LAST. The two external
+    // terms are inert when `external` is empty, so fully-extracted graphs keep
+    // the exact previous ordering.
+    const touches = (x: { e: IREdge; repFrom: string; repTo: string }) =>
+      extracted.has(x.repFrom) || extracted.has(x.repTo) ||
+      (x.e.fromCluster !== undefined && external.has(x.e.fromCluster)) ||
+      (x.e.toCluster !== undefined && external.has(x.e.toCluster)) ? 1 : 0;
     list.sort((a, b) => touches(a) - touches(b));
+  }
+
+  // ── Node-insertion order for an EXTRACTED sub-level ───────────────────────
+  // Mermaid builds each extracted cluster's sub-graph with `copy()` (dagre-
+  // KV5264BT.mjs:66), NOT the same builder as the root graph. `copy` walks
+  // `graph.children(cluster)` — which is [subgraphs in REVERSE declaration
+  // order, then leaves in vertex/first-appearance order] — and emits a leaf in
+  // place, but a (non-extracted) child subgraph's WHOLE SUBTREE first and the
+  // subgraph node AFTER it (post-order). An extracted child is already a single
+  // placeholder, emitted in place among the reversed subgraphs. This order is
+  // load-bearing: dagre's `dfsFAS` cycle-break starts at the first node with an
+  // out-edge, so the first LEAF in this list decides which edge of a cluster
+  // cycle is reversed. e.g. cyc3 `Apps`: copy order starts with `Rev_Open`
+  // (ProdB's leaf) → dagre reverses `Ed_Save→Rev_Open` → Reviewer ABOVE Editor,
+  // matching Mermaid. Our root level keeps `sortNodesByHierarchy` (which matches
+  // Mermaid's root `buildLayoutGraph` order — e.g. cyc3 ControlPlane ABOVE
+  // DataPlane); only EXTRACTED sub-levels use this `copy` order.
+  const subgraphsByParent = new Map<string | undefined, string[]>();
+  for (const sg of ir.subgraphs) {
+    if (!subgraphsByParent.has(sg.parent)) subgraphsByParent.set(sg.parent, []);
+    subgraphsByParent.get(sg.parent)!.push(sg.id);
+  }
+  const leavesByParent = new Map<string | undefined, string[]>();
+  for (const n of ir.nodes) {
+    if (!leavesByParent.has(n.parent)) leavesByParent.set(n.parent, []);
+    leavesByParent.get(n.parent)!.push(n.id);
+  }
+  function copyOrder(parent: string | undefined): string[] {
+    const out: string[] = [];
+    const subs = (subgraphsByParent.get(parent) ?? []).slice().reverse(); // reverse-decl
+    for (const sgId of subs) {
+      if (extracted.has(sgId)) {
+        out.push(sgId); // single placeholder, do not descend
+      } else {
+        out.push(...copyOrder(sgId)); // external/non-extracted: subtree first…
+        out.push(sgId);               // …then the subgraph node (post-order)
+      }
+    }
+    for (const leafId of leavesByParent.get(parent) ?? []) out.push(leafId); // vertex order
+    return out;
   }
 
   // Recursively lay out one cluster level. `clusterId === undefined` is the
@@ -199,12 +262,17 @@ export function layoutRecursive(ir: IR, external: Set<string>): IR {
     g.setDefaultEdgeLabel(() => ({}));
 
     // Insert this level's direct members in Mermaid order. EXTRACTED child
-    // clusters are single placeholders → `stopAt: extracted`. A NON-extracted
-    // child cluster is transparent: it is NOT a node here; its leaves are
-    // emitted by sortNodesByHierarchy (descended through, since it is not in
-    // `stopAt`) and laid out flat in this graph at THIS level's ranksep —
-    // exactly as Mermaid lays a non-extracted nested compound.
-    const ordered = sortNodesByHierarchy(ir, { parent: clusterId, stopAt: extracted });
+    // clusters appear as single placeholders (the order fn stops at them); an
+    // EXTERNAL child cluster becomes a flat compound node here (+ setParent
+    // below); a NON-extracted child cluster is transparent (no node — its leaves
+    // are descended through and laid flat at THIS level's ranksep, exactly as
+    // Mermaid lays a non-extracted nested compound).
+    // Order source: root → Mermaid's `buildLayoutGraph` order (our
+    // sortNodesByHierarchy is tuned to it); an EXTRACTED sub-level → Mermaid's
+    // `copy` order (`copyOrder`, see above) — load-bearing for the cycle-break.
+    const ordered = clusterId === undefined
+      ? sortNodesByHierarchy(ir, { parent: clusterId, stopAt: extracted })
+      : copyOrder(clusterId);
     const subResults = new Map<string, SubResult>();
     for (const id of ordered) {
       if (extracted.has(id)) {
@@ -212,13 +280,41 @@ export function layoutRecursive(ir: IR, external: Set<string>): IR {
         subResults.set(id, sub);
         g.setNode(id, { label: sgById.get(id)!.label, width: snap(sub.width), height: snap(sub.height) });
       } else if (sgById.has(id)) {
-        continue; // non-extracted nested cluster — transparent (leaves laid flat)
+        // A child subgraph that is NOT extracted. Two kinds:
+        //  • EXTERNAL (a boundary-crossing edge) → Mermaid keeps it FLAT at this
+        //    level (its "non-recursive path"): add it as a compound node here and
+        //    setParent its descendant leaves/nested clusters into it in the pass
+        //    below, exactly like the flat path. Its declared direction is ignored
+        //    and its drawn rect is later derived by cluster-bbox.ts from the leaf
+        //    positions (legacy padding, NO clusterMargins entry) — matching the
+        //    locked flat fixtures.
+        //  • NON-EXTRACTED (sole leaf-only child) → transparent: no node here,
+        //    its leaves are laid flat directly in this graph (existing behaviour).
+        if (external.has(id)) {
+          const esg = sgById.get(id)!;
+          g.setNode(id, { label: esg.label, width: snap(esg.label.length * 8 + 24), height: snap(30) });
+        }
+        continue;
       } else {
         const n = nodeById.get(id);
         if (!n) continue;
         const { w, h } = sizeForShape(n.shape, n.label);
         g.setNode(id, { label: n.label, width: snap(w), height: snap(h) });
       }
+    }
+
+    // setParent pass — compound grouping for the flat external clusters at THIS
+    // level. A member is parented into its IR parent iff that parent is itself a
+    // node in this level's graph (i.e. an external cluster we just added). Leaves
+    // directly in this level, extracted placeholders, and the leaves of a
+    // transparent non-extracted cluster have no in-graph parent (their parent is
+    // this level or absent), so they stay loose at the top of this compound
+    // graph. Empty work in the fully-extracted case (no external nodes added).
+    for (const id of ordered) {
+      if (extracted.has(id)) continue;                    // placeholder: parent is this level
+      if (sgById.has(id) && !external.has(id)) continue;  // non-extracted: transparent
+      const p = parentOf(id);
+      if (p !== undefined && g.hasNode(p)) g.setParent(id, p);
     }
 
     const levelEdges = edgesByLevel.get(clusterId) ?? [];
@@ -239,7 +335,7 @@ export function layoutRecursive(ir: IR, external: Set<string>): IR {
     for (const id of ordered) {
       const gn = g.node(id);
       if (!gn) continue;
-      if (sgById.has(id)) {
+      if (extracted.has(id)) {
         const sub = subResults.get(id)!;
         const tx = gn.x - sub.contentCenterX;
         const ty = gn.y - sub.contentCenterY;
@@ -249,6 +345,9 @@ export function layoutRecursive(ir: IR, external: Set<string>): IR {
         for (const [eid, pts] of sub.edgePoints) {
           edgePoints.set(eid, pts.map(p => ({ x: p.x + tx, y: p.y + ty })));
         }
+      } else if (sgById.has(id)) {
+        continue; // external/non-extracted cluster compound — its leaves are
+                  // separate g nodes, recorded individually below/above.
       } else {
         leafPos.set(id, { x: gn.x, y: gn.y, width: gn.width, height: gn.height });
       }
@@ -292,14 +391,73 @@ export function layoutRecursive(ir: IR, external: Set<string>): IR {
       nonExtBox.set(id, { x0: a0 - mx, y0: b0 - my, x1: a1 + mx, y1: b1 + my });
     }
 
+    // A DIRECT external (flat) child cluster contributes its DRAWN rect — the
+    // same legacy cluster-bbox padding (CLUSTER_PADDING + top label offset,
+    // recursive over any nested external clusters) that the final global
+    // computeClusterBboxes will re-derive for it (external clusters get no
+    // clusterMargins entry). Using that drawn rect here — NOT dagre's larger
+    // compound box — is what keeps THIS cluster's placeholder == its global
+    // drawn rect: both enclose the same legacy-padded external rects. Every leaf
+    // / nested cluster owned by a direct external child is therefore covered and
+    // must be skipped in the union below. Empty in the fully-extracted case.
+    const externalDrawnRect = (cid: string): { x0: number; y0: number; x1: number; y1: number } | null => {
+      let a0 = Infinity, b0 = Infinity, a1 = -Infinity, b1 = -Infinity;
+      let found = false;
+      for (const n of ir.nodes) {
+        if (n.parent !== cid) continue;
+        const gn = g.node(n.id);
+        if (!gn) continue;
+        a0 = Math.min(a0, gn.x - gn.width / 2); b0 = Math.min(b0, gn.y - gn.height / 2);
+        a1 = Math.max(a1, gn.x + gn.width / 2); b1 = Math.max(b1, gn.y + gn.height / 2);
+        found = true;
+      }
+      for (const csg of ir.subgraphs) {
+        if (csg.parent !== cid) continue;
+        let r: { x0: number; y0: number; x1: number; y1: number } | null;
+        if (extracted.has(csg.id)) {
+          const gn = g.node(csg.id); // nested extracted placeholder == its drawn rect
+          r = gn ? { x0: gn.x - gn.width / 2, y0: gn.y - gn.height / 2, x1: gn.x + gn.width / 2, y1: gn.y + gn.height / 2 } : null;
+        } else {
+          r = externalDrawnRect(csg.id); // nested external/non-extracted → recurse
+        }
+        if (!r) continue;
+        a0 = Math.min(a0, r.x0); b0 = Math.min(b0, r.y0);
+        a1 = Math.max(a1, r.x1); b1 = Math.max(b1, r.y1);
+        found = true;
+      }
+      if (!found) return null;
+      return { x0: a0 - CLUSTER_PADDING, y0: b0 - CLUSTER_PADDING - CLUSTER_LABEL_OFFSET, x1: a1 + CLUSTER_PADDING, y1: b1 + CLUSTER_PADDING };
+    };
+    const extBox = new Map<string, { x0: number; y0: number; x1: number; y1: number }>();
+    const coveredByExt = new Set<string>();
+    for (const id of ordered) {
+      if (!(sgById.has(id) && external.has(id) && parentOf(id) === clusterId)) continue;
+      const r = externalDrawnRect(id);
+      if (r) extBox.set(id, r);
+      const stack: string[] = [id];
+      while (stack.length) {
+        const cur = stack.pop()!;
+        for (const n of ir.nodes) if (n.parent === cur) coveredByExt.add(n.id);
+        for (const csg of ir.subgraphs) if (csg.parent === cur) { coveredByExt.add(csg.id); stack.push(csg.id); }
+      }
+    }
+
     // Content bbox over this level's DIRECT members (leaf rects + extracted-
-    // cluster PLACEHOLDER rects + NON-extracted child BOXES), NOT the flattened
-    // descendant leaves. Each member contributes its full drawn extent so the
-    // box stacks correctly per nesting level — the same way computeClusterBboxes
-    // re-derives it globally by enclosing nested boxes. Leaves owned by a non-
-    // extracted child are skipped (their box already covers them).
+    // cluster PLACEHOLDER rects + NON-extracted child BOXES + EXTERNAL child
+    // DRAWN rects), NOT the flattened descendant leaves. Each member contributes
+    // its full drawn extent so the box stacks correctly per nesting level — the
+    // same way computeClusterBboxes re-derives it globally by enclosing nested
+    // boxes. Leaves/clusters owned by a non-extracted or external child are
+    // skipped (their box already covers them).
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const id of ordered) {
+      const eb = extBox.get(id);
+      if (eb) {
+        minX = Math.min(minX, eb.x0); minY = Math.min(minY, eb.y0);
+        maxX = Math.max(maxX, eb.x1); maxY = Math.max(maxY, eb.y1);
+        continue;
+      }
+      if (coveredByExt.has(id)) continue;
       const box = nonExtBox.get(id);
       if (box) {
         minX = Math.min(minX, box.x0); minY = Math.min(minY, box.y0);

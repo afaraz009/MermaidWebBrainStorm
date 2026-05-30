@@ -197,6 +197,69 @@ so it is out of scope here; the cluster *formula* is exact (the gap equals the
 leaf-width delta, propagated). `tsc --noEmit` silent, `vite build` passes, no
 console errors on any fixture.
 
+### HANDOFF-2 RESOLVED (2026-05-31) — mixed-graph partial encapsulation (cyc3/cyc4)
+Mixed graphs (some encapsulatable + some external clusters) now take the
+recursive engine and are PARTIALLY encapsulated, matching Mermaid's
+`extractor` (encapsulate `externalConnections===false`) + non-recursive path
+(everything else flat). cyc3 encapsulates `Productivity`⊃`Apps` (keeps
+ControlPlane/DataPlane/ProdA/ProdB flat); cyc4 encapsulates `Pipeline` (keeps
+Stage/DiamondScc flat). Confirmed against the `"Cluster without external
+connections…"` dump.
+
+Implementation (`layout.ts` gate + `recursive-layout.ts`):
+1. **Gate widened** to `anyEncapsulatable && !anyPinned` (dropped `!anyExternal`).
+   An ALL-external graph has `anyEncapsulatable === false`, so it still falls
+   through to the flat path → byte-identical to baseline (no extra fallback
+   needed; this is what keeps the locked flat fixtures safe by construction).
+2. **External child clusters laid out FLAT in-place** at a mixed level: added as
+   dagre compound nodes (`setNode` + a `setParent` pass) inside the nearest
+   extracted ancestor's graph — Mermaid's "non recursive path"
+   (`graph.children(v).length > 0`). They get the legacy `cluster-bbox` padding
+   (no `clusterMargins` entry); their drawn rect feeds the parent's content bbox
+   via a recursive `externalDrawnRect`, so placeholder == drawn rect still holds.
+3. **Edge placement generalised**: logical endpoint uses the cluster id only for
+   EXTRACTED clusters (external → real anchor leaf); `effectiveParentOf` now skips
+   every non-extracted cluster; the cluster-touching edge reorder also catches
+   external-cluster edges. Identical for fully-extracted graphs (external empty).
+4. **NO reanchor pass.** The flat-path `reanchorClusterEdges` only fixes
+   `externalConnections===false` clusters — which here become placeholders. Mermaid
+   keeps external clusters' first-DFS anchor (cyc3 ControlPlane→CP_Scheduler; cyc4
+   Stage→D_Source), which `parser-adapter.findNonClusterChild` already reproduces.
+   Verified against the dump; the handoff prose's "run the reanchor for externals"
+   was wrong.
+5. **Cycle-break order — the hard part.** A 2-cluster cycle (cyc3 ProdA↔ProdB,
+   cyc4 DiamondScc) resolves by dagre `dfsFAS`, whose first-visited cycle leaf
+   decides which edge reverses. Mermaid builds the ROOT graph with
+   `buildLayoutGraph` but each EXTRACTED sub-graph with `copy()`
+   (dagre-KV5264BT.mjs:66) — a post-order DFS over
+   `[reverse-decl subgraphs, vertex leaves]` that emits a child subgraph's whole
+   subtree before the subgraph node. So Apps' first leaf is `Rev_Open` →
+   reverses `Ed_Save→Rev_Open` → **Reviewer ABOVE Editor**. We now mirror this:
+   the root level keeps `sortNodesByHierarchy` (matches `buildLayoutGraph`, e.g.
+   ControlPlane ABOVE DataPlane), and EXTRACTED sub-levels use a new `copyOrder`.
+
+Verification (Playwright on :5190, authorized):
+- Encapsulated SET == Mermaid for cyc3 (`Productivity`+`Apps`) and cyc4 (`Pipeline`).
+- Locked checkpoints HOLD: cyc3 Reviewer above Editor + Halt below Productivity +
+  ControlPlane above DataPlane; cyc4 Exit beside DiamondScc + Done below Pipeline
+  + D_Source above D_Join. Confirmed numerically + on the side-by-side.
+- **Rigorous before/after diff** (git-stash baseline, both rendered on :5190):
+  all 11 all-external fixtures (`fixture`, `fixture200`, `fixture_shapes`,
+  `fixture_nested`, `crosscluster(_acyclic)`, `cyclic_nested_1/2`,
+  `reserve_fallback`, `bt_pipeline`, `lr_cyclic`) **byte-identical**; all 5
+  fully-encapsulated probes (`node_to_subgraph`, `lr_nested`, `rl_chain`,
+  `deep_5level`, `lr_subdir`) **byte-identical** (the `copyOrder` switch does not
+  regress them — same leaf order in the no-mixed-leaves case). Only cyc3/cyc4
+  changed (flat → recursive, intended).
+- Collapse-all/expand-all round-trips cleanly on cyc3 (no errors, no NaN).
+- `tsc --noEmit` silent, `vite build` passes, no console errors.
+
+Sizes: our external clusters (ProdA/ProdB/ControlPlane/DataPlane/Stage/DiamondScc)
+keep legacy padding, so cyc3/cyc4 render a bit more compact than Mermaid — the
+encapsulated `Productivity`/`Apps`/`Pipeline` get Mermaid-sized compound boxes via
+HANDOFF-1's margins. Matching the flat externals to Mermaid's box would un-lock
+every flat fixture — out of scope, as the handoff noted.
+
 ### Remaining / deferred (honest status)
 - `reserve_fallback` L1/L2 flip: its `Cluster` is FULLY external (Start→L2 leaf
   crossing) → flat in BOTH Mermaid and us; our flat reserve-fallback heuristic
@@ -206,11 +269,14 @@ console errors on any fixture.
 - Short-label `rect` baseW=100 vs Mermaid ~83 — pre-existing leaf-node sizing
   (shared with locked flat fixtures), surfaces as a few px on clusters whose
   width is driven by short-label rects. Out of HANDOFF-1 scope.
-- Mixed-graph partial encapsulation (cyc3/cyc4) — intentionally flat.
+- Mixed-graph partial encapsulation (cyc3/cyc4) — **DONE** (HANDOFF-2 RESOLVED above).
 
 ### Before/after harness (established Stage 2)
-- **Port 5175 = ORIGINAL pre-refactor code** (another checkout's dev server).
 - **Port 5190 = this worktree** (`npx vite --port 5190 --strictPort`).
-- Diff `our-renderer.html?fixture=…` node `transform`s between the two to detect
-  regressions on the all-external (flat-path) fixtures, which MUST stay
-  identical. Capture: sort `[data-node-id]` → `id:transform`, join, compare.
+- NOTE (2026-05-31): the `:5175` server now serves THIS SAME worktree (its
+  "separate pre-refactor checkout" claim is stale — both ports import the live
+  `src/`). For a true before/after baseline, `git stash` the source edits and
+  re-render on :5190 (what HANDOFF-2 did) rather than trusting :5175.
+- Capture the raw layout output per fixture by importing the live modules in the
+  page: `parseToIR → deriveEffectiveIR → layout → computeClusterBboxes`, then
+  compare sorted `id:x,y,w,h` strings for nodes + clusters.

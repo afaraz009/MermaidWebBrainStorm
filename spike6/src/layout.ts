@@ -35,20 +35,24 @@ export function layout(ir: IR): IR {
   // connections stay flat (their declared direction is ignored) — which is what
   // the flat path below already does and already matches Mermaid byte-for-byte.
   //
-  // Stage 3 gate (deliberately narrow): take the recursive path ONLY when every
-  // cluster is encapsulatable (no external cluster anywhere) and nothing is
-  // pinned. Mixed graphs (some external + some encapsulated) and pinned graphs
-  // fall through to the proven flat path until later stages widen the gate.
+  // Gate: take the recursive path whenever the graph has at least one
+  // encapsulatable cluster (externalConnections === false) and nothing is
+  // pinned. This now covers MIXED graphs too (some encapsulated + some external
+  // at the same level — cyc3/cyc4): the recursive engine encapsulates the
+  // non-external clusters and lays the external ones flat in-place, matching
+  // Mermaid's `extractor`/non-recursive split. An ALL-external graph has no
+  // encapsulatable cluster (anyEncapsulatable === false), so it still falls
+  // through to the proven flat path and stays byte-identical to baseline.
+  // Pinned graphs still go flat (pin handling is the coarse any-pin → flat).
   // Per-cluster drawn-rect margins are a recursive-path artefact. Clear any
   // from a previous run so the flat path (and a graph that just flipped
   // recursive→flat) never reads stale margins into computeClusterBboxes.
   ir.clusterMargins = undefined;
 
   const external = computeExternalConnections(ir);
-  const anyExternal = external.size > 0;
   const anyEncapsulatable = ir.subgraphs.some(sg => !external.has(sg.id));
   const anyPinned = ir.nodes.some(n => n.pinned);
-  if (anyEncapsulatable && !anyExternal && !anyPinned) {
+  if (anyEncapsulatable && !anyPinned) {
     return layoutRecursive(ir, external);
   }
 
