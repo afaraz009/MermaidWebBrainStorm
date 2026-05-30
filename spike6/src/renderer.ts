@@ -674,13 +674,19 @@ export function renderFull(ir: IR, mountEl: SVGElement, interactive = false, ori
     rect.setAttribute('stroke-width', '1.5');
     rect.setAttribute('rx', '6');
 
+    // Cluster title — match Mermaid's subgraph title: 16px trebuchet, normal
+    // weight, near-black, sitting in the box's top margin band (baseline ~18px
+    // below the box top puts the glyph centre ~12px down, as Mermaid renders it).
+    // The "▾" is our collapse affordance (Mermaid has none); kept but now in the
+    // matching font. Title font does NOT affect layout (clusters are sized by
+    // content+margins, not by label width), so this is purely cosmetic.
     const text = el('text') as SVGTextElement;
     text.setAttribute('x', String(bbox.x + bbox.w / 2));
-    text.setAttribute('y', String(bbox.y + 14));
+    text.setAttribute('y', String(bbox.y + 18));
     text.setAttribute('text-anchor', 'middle');
-    text.setAttribute('font-size', '12');
-    text.setAttribute('font-weight', 'bold');
-    text.setAttribute('fill', '#495057');
+    text.setAttribute('font-size', '16');
+    text.setAttribute('font-family', '"trebuchet ms", verdana, arial, sans-serif');
+    text.setAttribute('fill', '#333333');
     text.setAttribute('class', 'sg-header');
     text.textContent = sg.label + '  ▾';
 
@@ -1139,7 +1145,7 @@ function updateSubgraphRects(meta: MountMeta): void {
     rect.setAttribute('height', String(bbox.h));
     if (text) {
       text.setAttribute('x', String(bbox.x + bbox.w / 2));
-      text.setAttribute('y', String(bbox.y + 14));
+      text.setAttribute('y', String(bbox.y + 18));
     }
   }
 }

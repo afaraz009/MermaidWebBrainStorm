@@ -7,7 +7,28 @@ graphs that mix encapsulatable and external clusters.
 **Risk:** HIGH — these are LOCKED fixtures. A wrong move regresses passing
 checkpoints. Implement behind the gate and verify obsessively against the dump.
 **Read first:** `README.md` (engine + harness). Skim `../RECURSIVE_LAYOUT_LOG.md`
-Stage 5.
+Stage 5 + "HANDOFF-1 RESOLVED".
+
+> **Visible symptom (expected until this lands):** on the side-by-side, cyc3's
+> nested clusters render markedly more COMPACT than Mermaid — e.g. `Productivity`
+> 295×585 vs Mermaid 365×906, `Apps` 255×535 vs 295×831 (measured 2026-05-31).
+> That is this deferred item, NOT a HANDOFF-1 regression: cyc3 goes entirely
+> through the flat path (it has external clusters), which HANDOFF-1 left
+> byte-identical to baseline. Two causes compound here: (a) Mermaid gives
+> `Productivity`/`Apps` their own encapsulated layout (≈320px more height) which we
+> don't, and (b) flat-path clusters are drawn at `cluster-bbox` padding, smaller
+> than Mermaid's dagre compound box.
+>
+> **Leverage from HANDOFF-1:** the recursive engine now sizes each encapsulated
+> cluster to Mermaid's exact compound box and records per-cluster margins in
+> `ir.clusterMargins` (see `recursive-layout.ts` + the log). So once this task
+> routes `Productivity`/`Apps` through `layoutRecursive`, they get correct
+> Mermaid-sized rects for free. The remaining flat external clusters
+> (`ControlPlane`/`DataPlane`/`ProdA`/`ProdB`) keep the legacy `cluster-bbox`
+> padding (no `clusterMargins` entry) — matching the locked flat fixtures, but
+> still smaller than Mermaid's box for those four. Closing that last flat-cluster
+> sizing gap would mean applying the compound-box size on the flat path too, which
+> un-locks every flat fixture — out of scope for cyc3 parity unless explicitly taken on.
 
 ## Problem
 

@@ -9,7 +9,7 @@ clusters) is shipped and verified. Full decision trail: `../RECURSIVE_LAYOUT_LOG
 
 | # | File | One-liner | Risk |
 |---|------|-----------|------|
-| 1 | [HANDOFF-1-cluster-size-parity.md](HANDOFF-1-cluster-size-parity.md) | Recursive clusters render more compact than Mermaid (placeholder/parent-spacing too small). | Medium |
+| 1 | [HANDOFF-1-cluster-size-parity.md](HANDOFF-1-cluster-size-parity.md) | ✅ DONE (2026-05-31). Recursive clusters now sized to Mermaid's dagre compound box (rank Δ=ranksep, cross Δ=70/40); drawn rect decoupled via `ir.clusterMargins`; sole-leaf-child non-extraction replicated. See `../RECURSIVE_LAYOUT_LOG.md` "HANDOFF-1 RESOLVED". | Medium |
 | 2 | [HANDOFF-2-mixed-graph-encapsulation.md](HANDOFF-2-mixed-graph-encapsulation.md) | Mixed graphs (cyc3/cyc4) kept fully flat; Mermaid partially encapsulates them. | High (locked fixtures) |
 | 3 | [HANDOFF-3-reserve-fallback-flip.md](HANDOFF-3-reserve-fallback-flip.md) | `fixture_reserve_fallback` L1/L2 sibling order flipped vs Mermaid (flat-path quirk). | Medium |
 

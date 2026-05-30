@@ -148,12 +148,64 @@ unchanged (their direct members ARE their leaves); user confirmed no regression
 across diagrams. NOTE: this is internal-consistency only — it does NOT change
 that our clusters are more compact than Mermaid's (separate padding gap below).
 
+### HANDOFF-1 RESOLVED (2026-05-31) — exact cluster-size parity
+Stage 4's "known sizing gap" is now FIXED to pixel parity. Key correction: the
+handoff (and Stage 4 above) assumed Mermaid DRAWS a small rect (content+20+10)
+inside a larger reserved placeholder. Measuring Mermaid's rendered `.cluster
+rect` (DOM `getAttribute`) disproves that — **Mermaid draws the full dagre
+compound box** (Backend 363.31×138.38, System 1262.9×264). Drawn rect ==
+placeholder == compound box; there is no small-rect-inside-big-box.
+
+Law derived from Mermaid's `Graph after layout` dumps (exact across lr_nested /
+node_to_subgraph / lr_subdir / rl_chain — 13 clusters) and confirmed against
+@dagrejs/dagre border-node `sep()`:
+- **rank-axis** half-margin (dagre rank direction) = `ranksep/2`
+- **cross-axis** half-margin = `(nodesep+edgesep)/2 = 35` for a leaf/extracted-
+  placeholder child; `edgesep = 20` when the sole child is a NON-extracted
+  nested compound (dummy↔dummy borders, e.g. deep_5level L3 around L4 → +40).
+
+Implementation (`recursive-layout.ts` + `cluster-bbox.ts`):
+1. Each recursive cluster is sized by this law (direction-aware, symmetric about
+   its content centre) for BOTH the parent placeholder AND the drawn rect.
+2. The drawn rect is decoupled from the flat-path `CLUSTER_PADDING` via
+   `ir.clusterMargins` (per-cluster half-margins): `computeClusterBboxes` applies
+   them when present (NO label offset — label overlaps the top margin, as Mermaid
+   draws it), else falls back to the legacy padding. The flat path leaves
+   `clusterMargins` unset (cleared at top of `layout()`), so **flat fixtures are
+   byte-identical** (verified crosscluster + cyclic_nested_3 vs :5175). All
+   computeClusterBboxes consumers (renderer / edge-clip / drag / A*) get the big
+   box automatically, so the whole-cluster edge clip target == the drawn border.
+3. Non-extraction (deep_5level L4): replicated Mermaid's empirical rule — a SOLE
+   leaf-only child cluster is NOT extracted; it stays a nested dagre compound in
+   its parent's graph (shares parent ranksep, no +25; leaves laid flat there).
+   Implemented via `nonExtracted`/`extracted` sets + an effective-parent that
+   makes such clusters transparent to edge-LCA placement.
+
+Follow-up (cosmetic): the cluster TITLE font was matched to Mermaid in
+`renderer.ts` — 16px trebuchet / normal weight / #333 (was 12px bold #495057),
+baseline `bbox.y + 18`. Title font does NOT affect layout (clusters are sized by
+content+margins, not label width), so all positions are unchanged; the "▾"
+collapse affordance is kept in the matching font. Applies to both paths.
+
+Result: cluster sizes & node positions match Mermaid to the pixel on
+node_to_subgraph, lr_subdir (Stack), rl_chain, deep_5level (all 5 clusters +
+leaf spacing), and lr_nested (UI/Frontend). RESIDUAL: Backend/System (lr_nested)
+and Flow (lr_subdir) are ~17–24px wider — traced to a PRE-EXISTING leaf-node
+sizing diff (`sizeForShape` `rect` baseW=100 floors short labels like "API" at
+100 vs Mermaid's 82.81). That constant is shared with the locked flat fixtures,
+so it is out of scope here; the cluster *formula* is exact (the gap equals the
+leaf-width delta, propagated). `tsc --noEmit` silent, `vite build` passes, no
+console errors on any fixture.
+
 ### Remaining / deferred (honest status)
 - `reserve_fallback` L1/L2 flip: its `Cluster` is FULLY external (Start→L2 leaf
   crossing) → flat in BOTH Mermaid and us; our flat reserve-fallback heuristic
   diverges from Mermaid's flat result. This is a pre-existing FLAT-PATH issue,
   not the flat-vs-recursive gap, and is not fixed by the recursive port.
-- Cluster-size parity for nested clusters (see Stage 4) — approximation.
+- Cluster-size parity for nested clusters (Stage 4) — **DONE** (see above).
+- Short-label `rect` baseW=100 vs Mermaid ~83 — pre-existing leaf-node sizing
+  (shared with locked flat fixtures), surfaces as a few px on clusters whose
+  width is driven by short-label rects. Out of HANDOFF-1 scope.
 - Mixed-graph partial encapsulation (cyc3/cyc4) — intentionally flat.
 
 ### Before/after harness (established Stage 2)

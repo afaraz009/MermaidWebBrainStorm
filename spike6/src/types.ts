@@ -83,4 +83,15 @@ export interface IR {
   subgraphs: IRSubgraph[];
   // Defaults to 'TB' when the source omits a direction.
   direction?: Direction;
+  // Per-cluster drawn-rect half-margins (per side, on each axis) set by the
+  // RECURSIVE engine only. When present for a cluster id, computeClusterBboxes
+  // expands that cluster's content bbox by these (symmetric, NO label offset)
+  // instead of the flat-path CLUSTER_PADDING/CLUSTER_LABEL_OFFSET — so the
+  // recursive cluster's DRAWN rect equals Mermaid's dagre compound-box size
+  // (rank-axis margin = ranksep/2, cross-axis margin = (nodesep+edgesep)/2,
+  // mapped to x/y by the cluster's direction). The flat path leaves this unset,
+  // so its clusters keep the legacy padding and stay byte-identical. Cleared at
+  // the top of layout() so a graph that flips recursive→flat can't read stale
+  // margins. See recursive-layout.ts (clusterMargins) and HANDOFF-1.
+  clusterMargins?: Map<string, { x: number; y: number }>;
 }

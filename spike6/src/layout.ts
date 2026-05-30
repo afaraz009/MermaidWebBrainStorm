@@ -39,6 +39,11 @@ export function layout(ir: IR): IR {
   // cluster is encapsulatable (no external cluster anywhere) and nothing is
   // pinned. Mixed graphs (some external + some encapsulated) and pinned graphs
   // fall through to the proven flat path until later stages widen the gate.
+  // Per-cluster drawn-rect margins are a recursive-path artefact. Clear any
+  // from a previous run so the flat path (and a graph that just flipped
+  // recursive→flat) never reads stale margins into computeClusterBboxes.
+  ir.clusterMargins = undefined;
+
   const external = computeExternalConnections(ir);
   const anyExternal = external.size > 0;
   const anyEncapsulatable = ir.subgraphs.some(sg => !external.has(sg.id));

@@ -62,12 +62,25 @@ export function computeClusterBboxes(ir: IR): Map<string, BBox> {
 
     if (!isFinite(minX)) return null;
 
-    const bbox: BBox = {
-      x: minX - CLUSTER_PADDING,
-      y: minY - CLUSTER_PADDING - CLUSTER_LABEL_OFFSET,
-      w: maxX - minX + CLUSTER_PADDING * 2,
-      h: maxY - minY + CLUSTER_PADDING * 2 + CLUSTER_LABEL_OFFSET,
-    };
+    // Recursive clusters carry direction/ranksep-aware half-margins (set by
+    // recursive-layout.ts) that reproduce Mermaid's dagre compound-box size.
+    // When present, expand symmetrically with NO extra label offset (the label
+    // overlaps the top margin, as Mermaid draws it). Flat clusters have no
+    // entry and keep the legacy CLUSTER_PADDING + top CLUSTER_LABEL_OFFSET.
+    const m = ir.clusterMargins?.get(sgId);
+    const bbox: BBox = m
+      ? {
+          x: minX - m.x,
+          y: minY - m.y,
+          w: maxX - minX + m.x * 2,
+          h: maxY - minY + m.y * 2,
+        }
+      : {
+          x: minX - CLUSTER_PADDING,
+          y: minY - CLUSTER_PADDING - CLUSTER_LABEL_OFFSET,
+          w: maxX - minX + CLUSTER_PADDING * 2,
+          h: maxY - minY + CLUSTER_PADDING * 2 + CLUSTER_LABEL_OFFSET,
+        };
     map.set(sgId, bbox);
     return bbox;
   }

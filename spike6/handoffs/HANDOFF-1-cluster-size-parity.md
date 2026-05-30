@@ -1,5 +1,18 @@
 # Handoff 1 — Cluster-size parity (recursive clusters are too compact)
 
+> **✅ RESOLVED 2026-05-31.** Implemented in `src/recursive-layout.ts` +
+> `src/cluster-bbox.ts` (+ `ir.clusterMargins` on `src/types.ts`, cleared in
+> `src/layout.ts`). Full write-up: `../RECURSIVE_LAYOUT_LOG.md` → "HANDOFF-1
+> RESOLVED". **Important correction to this doc's premise below:** Mermaid does
+> NOT draw a small rect inside a bigger placeholder — it draws the full dagre
+> **compound box** (verified by measuring the rendered `.cluster rect`). So the
+> fix sizes the drawn rect == placeholder == compound box (rank-axis Δ = ranksep,
+> cross-axis Δ = nodesep+edgesep = 70, or edgesep = 40 for a non-extracted nested
+> compound), decoupled from the flat-path `CLUSTER_PADDING` via `ir.clusterMargins`
+> so locked flat fixtures stay byte-identical. The "decouple, keep drawn rect
+> small" shape suggested below was therefore NOT followed — read the log entry,
+> not the recommendation below, for what shipped.
+
 **Status:** deferred, NOT a regression. Layout is internally consistent and renders
 cleanly; it's just tighter than Mermaid on nested diagrams.
 **Risk:** Medium. Touches placeholder sizing; must not change the *drawn* rect of
