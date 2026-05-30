@@ -46,24 +46,40 @@ export function deriveEffectiveIR(ir: IR): IR {
 
   // 2. Surrogate nodes: one per subgraph that IS the outermost collapsed
   //    (i.e. collapsed itself, and no ancestor above it is collapsed).
+  //    A surrogate whose collapsed cluster was nested inside another (still
+  //    visible) cluster must be registered as a child of that parent — see
+  //    step 3. Without this, a parent cluster whose ONLY content was the now-
+  //    collapsed nested cluster (e.g. cyc3's `Productivity`, which has no
+  //    direct leaf children, only `Apps`) would have an empty `children` array
+  //    AND no surviving nested subgraph, so computeClusterBboxes can't size it
+  //    and the renderer drops the cluster entirely.
+  const surrogateChildrenByParent = new Map<string, string[]>();
   for (const sg of ir.subgraphs) {
     if (!sg.collapsed) continue;
     const outer = sg.parent ? outermostCollapsedAncestor(sg.parent, sgById) : undefined;
     if (outer !== undefined) continue;
+    const surrId = surrogateIdFor(sg.id);
     nodes.push({
-      id: surrogateIdFor(sg.id),
+      id: surrId,
       label: sg.label,
       shape: 'rect',
       parent: sg.parent,
     });
+    if (sg.parent) {
+      if (!surrogateChildrenByParent.has(sg.parent)) surrogateChildrenByParent.set(sg.parent, []);
+      surrogateChildrenByParent.get(sg.parent)!.push(surrId);
+    }
   }
 
-  // 3. Visible subgraphs: those where neither self nor any ancestor is collapsed.
+  // 3. Visible subgraphs: those where neither self nor any ancestor is
+  //    collapsed. A visible cluster's children are its original leaf children
+  //    plus any surrogate standing in for a directly-nested collapsed cluster.
   const subgraphs: IRSubgraph[] = [];
   for (const sg of ir.subgraphs) {
     const root = outermostCollapsedAncestor(sg.id, sgById);
     if (root !== undefined) continue;
-    subgraphs.push({ ...sg, children: sg.children.slice(), collapsed: undefined });
+    const surrogateKids = surrogateChildrenByParent.get(sg.id) ?? [];
+    subgraphs.push({ ...sg, children: [...sg.children, ...surrogateKids], collapsed: undefined });
   }
 
   // 4. Edge remapping with dedup.

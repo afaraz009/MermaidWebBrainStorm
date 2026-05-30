@@ -1144,12 +1144,29 @@ function updateSubgraphRects(meta: MountMeta): void {
   }
 }
 
+// Paint subgraph rects shallow-first so the DEEPEST cluster ends up on top and
+// receives clicks. The previous "no-parent before has-parent" partition was
+// insufficient for ≥3 levels: Mermaid's getSubGraphs() emits subgraphs
+// inner-first (post-order), so a stable partition leaves an intermediate
+// cluster (e.g. cyc3's `Apps`) painted AFTER its own nested children
+// (`ProdA`/`ProdB`) — the parent rect then sits on top and swallows every
+// collapse click meant for the children. Sorting by nesting depth (number of
+// ancestors) fixes the z-order: outer clusters underneath, inner clusters on
+// top, so `closest('[data-subgraph-id]')` resolves to the innermost rect.
 function sortSubgraphsOuterFirst(subgraphs: IRSubgraph[]): IRSubgraph[] {
-  return [...subgraphs].sort((a, b) => {
-    if (!a.parent && b.parent) return -1;
-    if (a.parent && !b.parent) return 1;
-    return 0;
-  });
+  const byId = new Map(subgraphs.map(s => [s.id, s]));
+  const depthOf = (sg: IRSubgraph): number => {
+    let d = 0;
+    let cur = sg.parent;
+    while (cur) {
+      const p = byId.get(cur);
+      if (!p) break;
+      d++;
+      cur = p.parent;
+    }
+    return d;
+  };
+  return [...subgraphs].sort((a, b) => depthOf(a) - depthOf(b));
 }
 
 function fitSVG(ir: IR, mountEl: SVGElement): void {
