@@ -62,6 +62,12 @@ export interface IRSubgraph {
   parent?: string;
   children: string[];
   collapsed?: boolean;
+  // The subgraph's own declared `direction` (from a `direction XX` line inside
+  // the block), normalised like the top-level direction. `undefined` when the
+  // block declares none — recursive layout then applies Mermaid's default-dir
+  // flip for an encapsulated cluster (parent TB → LR, else TB). Mirrors
+  // Mermaid's `subGraph.dir` → cluster node `clusterData.dir`.
+  direction?: Direction;
 }
 
 // Top-level flow direction, normalised from Mermaid's `db.getDirection()`

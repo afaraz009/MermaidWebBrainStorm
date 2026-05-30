@@ -110,8 +110,23 @@ Specific parity checkpoints to re-verify if layout changes:
 
 ## Known remaining debt (not yet addressed)
 
-- **#1/#2 architectural**: two-pass re-anchor + interior-waypoint culling —
-  the flat-vs-recursive layout gap. Biggest item; needs a recursive port.
+- **#1/#2 architectural — PARTIALLY ADDRESSED on branch `recursive-layout`.**
+  A selective recursive layout (`src/recursive-layout.ts`, gated from
+  `layout.ts`) now encapsulates `externalConnections===false` clusters into
+  their own sub-layout with their own `direction` — mirroring Mermaid's
+  `extractor`/`recursiveRender`. This fixes the per-subgraph-direction gap
+  (`fixture_lr_subdir`) and parallel-branch ordering for encapsulatable clusters
+  (`fixture_rl_chain`), verified against Mermaid's dump. Shared helpers live in
+  `src/layout-core.ts`. Still on the FLAT two-pass re-anchor + interior-cull path
+  (unchanged, byte-identical): any graph containing an EXTERNAL cluster — i.e.
+  all the cross-boundary fixtures (`fixture`, `fixture200`, `fixture_nested`,
+  `cyclic_nested_1..4`, `crosscluster*`, `reserve_fallback`) — because Mermaid
+  also lays external clusters out flat. Remaining gaps: (a) MIXED graphs
+  (cyc3/cyc4 — Mermaid partially encapsulates; we keep them flat to preserve the
+  locked checkpoints); (b) recursive cluster SIZING is more compact than
+  Mermaid's (cluster-bbox.ts padding vs Mermaid's larger label-influenced
+  padding); (c) `reserve_fallback`'s L1/L2 flip is a flat-path reserve-fallback
+  issue, not the recursive gap. See `RECURSIVE_LAYOUT_LOG.md` for the full trail.
 - **Non-public Mermaid API coupling** (`parser-adapter.ts`) — no version
   guard; would break silently on a Mermaid major bump.
 - These were explicitly deferred — see prior session's plan at

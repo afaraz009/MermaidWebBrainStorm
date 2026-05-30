@@ -2,236 +2,52 @@
 // Same graphlib API; barycenter/tie-breaking may differ on branch ordering.
 import * as graphlib from 'dagre-d3-es/src/graphlib/index.js';
 import { layout as dagreLayout } from 'dagre-d3-es/src/dagre/index.js';
-import type { IR, IRNode, NodeShape } from './types.js';
-import { clipToBorder, clipToClusterRect } from './border.js';
+import type { IR, IRNode } from './types.js';
 import { astarSettings } from './astarSettings.js';
 import { computeClusterBboxes } from './cluster-bbox.js';
+import {
+  ceilTo,
+  sizeForShape,
+  edgeLabelSize,
+  sortNodesByHierarchy,
+  collectClusterLeaves,
+  computeExternalConnections,
+  clipEdgeWaypoints,
+} from './layout-core.js';
+import { layoutRecursive } from './recursive-layout.js';
 
-// Round up to a multiple of `step`. Used to size nodes and snap positions to
-// the A* grid so every node boundary lands on a cell line.
-function ceilTo(v: number, step: number): number {
-  return Math.ceil(v / step) * step;
-}
-
-// Match Mermaid v11's label rendering font so our measured text widths line
-// up with what Mermaid's dagre input contains. Renderer.ts must use the same
-// font for the visible label text or the rendered text will float in an
-// oversized box (or overflow an undersized one).
-const LABEL_FONT_SIZE = 16;
-const LABEL_FONT_FAMILY = '"trebuchet ms", verdana, arial, sans-serif';
-
-// Hidden offscreen HTML span reused for every measurement. Using HTML (not
-// SVG <text>) because Mermaid renders labels inside foreignObject HTML and
-// sizes nodes from getBoundingClientRect — which returns the line-box height
-// (~24 at 16px Trebuchet MS), whereas SVG getBBox returns the tight glyph
-// height (~18.67 for the same text). The 5px difference shows up as ~5px
-// shortfall in cylinder heights when using SVG measurement.
-let _measureSpan: HTMLSpanElement | null = null;
-
-function getMeasureSpan(): HTMLSpanElement {
-  if (_measureSpan) return _measureSpan;
-  _measureSpan = document.createElement('span');
-  _measureSpan.style.position = 'absolute';
-  _measureSpan.style.visibility = 'hidden';
-  _measureSpan.style.left = '-9999px';
-  _measureSpan.style.top = '0';
-  _measureSpan.style.whiteSpace = 'nowrap';
-  _measureSpan.style.fontSize = `${LABEL_FONT_SIZE}px`;
-  _measureSpan.style.fontFamily = LABEL_FONT_FAMILY;
-  // Mermaid wraps labels in a <p>, which gives a line-box height of 1.5 * fontSize
-  // (24px at 16px font). Default span bbox returns tight glyph height (~18.67),
-  // which under-measures by ~5 px and shows up as short cylinder caps. Forcing
-  // line-height here matches Mermaid's effective text height.
-  _measureSpan.style.lineHeight = '1.5';
-  _measureSpan.style.display = 'inline-block';
-  document.body.appendChild(_measureSpan);
-  return _measureSpan;
-}
-
-export function measureLabel(label: string): { w: number; h: number } {
-  if (typeof document === 'undefined') {
-    // SSR / test fallback.
-    return { w: label.length * 9.5, h: 24 };
-  }
-  const sp = getMeasureSpan();
-  sp.textContent = label || ' ';
-  const bb = sp.getBoundingClientRect();
-  return { w: bb.width, h: bb.height };
-}
-
-// Edge-label wrap width and line-height match Mermaid's `createText` defaults
-// (mermaid.js:40651 / :40549). Live here (not renderer.ts) because dagre also
-// needs edge label dimensions when allocating space between nodes — otherwise
-// a wide label gets squashed by tight node spacing. Renderer imports the same
-// helpers so the rendered rect matches the box dagre reserved.
-export const EDGE_LABEL_WRAP_WIDTH = 200;
-export const EDGE_LABEL_LINE_HEIGHT_EM = 1.1;
-const EDGE_LABEL_PAD_X = 4;
-const EDGE_LABEL_PAD_Y = 0;
-
-export function wrapEdgeLabel(text: string): string[] {
-  if (!text) return [];
-  const { w: fullW } = measureLabel(text);
-  if (fullW <= EDGE_LABEL_WRAP_WIDTH) return [text];
-  const words = text.split(/\s+/).filter(Boolean);
-  const lines: string[] = [];
-  let current = '';
-  for (const word of words) {
-    const trial = current ? `${current} ${word}` : word;
-    if (measureLabel(trial).w <= EDGE_LABEL_WRAP_WIDTH) {
-      current = trial;
-    } else {
-      if (current) lines.push(current);
-      current = word;
-    }
-  }
-  if (current) lines.push(current);
-  return lines.length > 0 ? lines : [text];
-}
-
-export function edgeLabelSize(label: string): { w: number; h: number } {
-  const lines = wrapEdgeLabel(label);
-  if (lines.length === 0) return { w: 0, h: 0 };
-  let maxW = 0;
-  let lineH = 0;
-  for (const line of lines) {
-    const m = measureLabel(line);
-    if (m.w > maxW) maxW = m.w;
-    if (m.h > lineH) lineH = m.h;
-  }
-  const totalH = lineH + lineH * EDGE_LABEL_LINE_HEIGHT_EM * (lines.length - 1);
-  return {
-    w: maxW + EDGE_LABEL_PAD_X * 2,
-    h: totalH + EDGE_LABEL_PAD_Y * 2,
-  };
-}
-
-// Per-shape sizing calibrated against Mermaid v11's actual dagre input
-// dimensions (`Graph before layout` log entry) on fixture.mmd + fixture200.mmd
-// captured 2026-05-25. Each shape gets a SEPARATE horizontal padding because
-// Mermaid uses different padding per shape — derived empirically as
-// `(Mermaid dagre width - HTML text bbox width) / 2`:
-//   rect/round       30   (Process Node 153.84 - text 93.84 = 60)
-//   diamond          27   (Decision Node 154.66 - text 100.66 = 54)
-//   parallelograms   27   (Input Output 145.89 - text 91.88 = 54)
-//   subroutine       15.5 (Subroutine 108.28 - text 77.28 = 31)
-//   stadium          12.5 (Start 59.74 - text 35.01 = 24.73)
-//   asymmetric       12.5 (Asymmetric Node 150.16 - text 125.40 = 24.76)
-//   hexagon          17   (Hexagon Node 136.74 - text 102.24 = 34.5)
-//   cylinder         7.5  (Database 80.5 - text 65.5 = 15)
-//   double-circle    15   (Circle Node 112.98 - text 82.98 = 30)
-// Height policy:
-//   - number     : fixed Mermaid height (stadium=39, rect=54, etc.)
-//   - 'square'   : w = h (diamond, circle, double-circle inscribe text in a
-//                  square so the rotated rhombus / round shape has room)
-//   - 'cylinder' : Mermaid expands cylinder height with width to keep the
-//                  elliptical caps proportional — `textH + 30 + w * 0.18`
-//                  matches Database(80.5,68.38), Storage(69,65.68), and
-//                  fixture200 Telemetry 10(108,73.86) within ~1px.
-const SHAPE_BASE: Record<NodeShape, { baseW: number; h: number | 'square' | 'cylinder'; pad: number }> = {
-  rect:                { baseW: 100, h: 54,         pad: 30 },
-  round:               { baseW: 100, h: 54,         pad: 30 },
-  stadium:             { baseW: 50,  h: 39,         pad: 12.5 },
-  subroutine:          { baseW: 80,  h: 39,         pad: 15.5 },
-  cylinder:            { baseW: 55,  h: 'cylinder', pad: 7.5 },
-  circle:              { baseW: 50,  h: 'square',   pad: 15 },
-  'double-circle':     { baseW: 50,  h: 'square',   pad: 15 },
-  diamond:             { baseW: 50,  h: 'square',   pad: 27 },
-  hexagon:             { baseW: 80,  h: 39,         pad: 17 },
-  parallelogram:       { baseW: 50,  h: 39,         pad: 27 },
-  'parallelogram-alt': { baseW: 50,  h: 39,         pad: 27 },
-  trapezoid:           { baseW: 100, h: 60,         pad: 27 },
-  'trapezoid-alt':     { baseW: 100, h: 60,         pad: 27 },
-  asymmetric:          { baseW: 80,  h: 39,         pad: 12.5 },
-  ellipse:             { baseW: 100, h: 39,         pad: 25 },
-};
-
-function sizeForShape(shape: NodeShape, label: string): { w: number; h: number } {
-  const cfg = SHAPE_BASE[shape] ?? SHAPE_BASE.rect;
-  const { w: textW, h: textH } = measureLabel(label);
-  const w = Math.max(cfg.baseW, textW + 2 * cfg.pad);
-  let h: number;
-  if (cfg.h === 'square') h = w;
-  else if (cfg.h === 'cylinder') h = textH + 30 + w * 0.18;
-  else h = cfg.h;
-  return { w, h };
-}
-
-// Mermaid-faithful node insertion order for dagre. Returns the IR's nodes in
-// the same sequence Mermaid v11 inserts them into its outer compound graph
-// (verified empirically against the `Adjusted Graph` log entry from
-// mermaid-debug.html for fixture_nested.mmd, 2026-05-25). The order affects
-// dagre's barycenter tiebreaker when sibling clusters have no edges between
-// them at their level — see the in-function comment for the load-bearing
-// detail (reverse sibling order at every cluster level).
-function sortNodesByHierarchy(ir: IR): string[] {
-  // Mermaid's `Adjusted Graph` for fixture_nested.mmd (captured 2026-05-25
-  // via mermaid-debug.html) shows TWO surprising properties of its node
-  // insertion order:
-  //   1. ALL cluster nodes are inserted first, in a single DFS pass through
-  //      the cluster hierarchy, BEFORE any leaf nodes.
-  //   2. The cluster DFS and the leaf DFS use DIFFERENT sibling orders:
-  //      • cluster section visits siblings in REVERSE declaration order.
-  //      • leaf section visits the same siblings in DECLARATION order.
-  // The asymmetry on (2) is empirical — see the dump. It's surprising enough
-  // that the code below takes the order as an explicit parameter rather than
-  // implying it via "which map you read from", so the asymmetry is visible
-  // at the call site instead of hidden in a pre-reversed data structure.
-  //
-  // Why (2) matters: when two clusters at the same level have no edges
-  // between them (e.g. fixture_nested's Storage_L2 children Cache/Primary),
-  // dagre's barycenter tiebreaker falls back to insertion order. The reverse
-  // cluster order puts Cache LEFT and Primary RIGHT — matching Mermaid v11.
-  const subgraphsByParent = new Map<string | undefined, string[]>();
-  for (const sg of ir.subgraphs) {
-    const key = sg.parent;
-    if (!subgraphsByParent.has(key)) subgraphsByParent.set(key, []);
-    subgraphsByParent.get(key)!.push(sg.id);
-  }
-  const leavesByParent = new Map<string | undefined, string[]>();
-  for (const n of ir.nodes) {
-    const key = n.parent;
-    if (!leavesByParent.has(key)) leavesByParent.set(key, []);
-    leavesByParent.get(key)!.push(n.id);
-  }
-
-  // Child subgraph ids of `parent`, in the requested visit order. Pristine
-  // declaration order is what the map holds; `reversed` returns a fresh
-  // reversed copy so the map itself stays canonical.
-  type SiblingOrder = 'declaration' | 'reversed';
-  function childSubgraphs(parent: string | undefined, order: SiblingOrder): string[] {
-    const list = subgraphsByParent.get(parent) ?? [];
-    return order === 'reversed' ? list.slice().reverse() : list;
-  }
-
-  const out: string[] = [];
-
-  // CLUSTER section — siblings REVERSED. Load-bearing for property (2) above.
-  function emitClusters(parent: string | undefined): void {
-    for (const sgId of childSubgraphs(parent, 'reversed')) {
-      out.push(sgId);
-      emitClusters(sgId);
-    }
-  }
-
-  // LEAF section — leaves of each cluster, then recurse into nested clusters
-  // in DECLARATION order. Opposite asymmetry from emitClusters by design.
-  function emitLeaves(parent: string | undefined): void {
-    for (const leafId of leavesByParent.get(parent) ?? []) {
-      out.push(leafId);
-    }
-    for (const sgId of childSubgraphs(parent, 'declaration')) {
-      emitLeaves(sgId);
-    }
-  }
-
-  emitClusters(undefined);
-  emitLeaves(undefined);
-
-  return out;
-}
+// Re-export the label helpers consumed by renderer.ts so its import path
+// (`from './layout.js'`) is unchanged after the helper extraction into
+// layout-core.ts.
+export {
+  measureLabel,
+  wrapEdgeLabel,
+  edgeLabelSize,
+  EDGE_LABEL_WRAP_WIDTH,
+  EDGE_LABEL_LINE_HEIGHT_EM,
+} from './layout-core.js';
 
 export function layout(ir: IR): IR {
+  // Selective recursion (Mermaid's `extractor`): a cluster with NO boundary-
+  // crossing edge (externalConnections === false) is encapsulated into its own
+  // isolated sub-layout with its OWN direction, sized as a single node in its
+  // parent, then its children are translated into place. Clusters WITH external
+  // connections stay flat (their declared direction is ignored) — which is what
+  // the flat path below already does and already matches Mermaid byte-for-byte.
+  //
+  // Stage 3 gate (deliberately narrow): take the recursive path ONLY when every
+  // cluster is encapsulatable (no external cluster anywhere) and nothing is
+  // pinned. Mixed graphs (some external + some encapsulated) and pinned graphs
+  // fall through to the proven flat path until later stages widen the gate.
+  const external = computeExternalConnections(ir);
+  const anyExternal = external.size > 0;
+  const anyEncapsulatable = ir.subgraphs.some(sg => !external.has(sg.id));
+  const anyPinned = ir.nodes.some(n => n.pinned);
+  if (anyEncapsulatable && !anyExternal && !anyPinned) {
+    return layoutRecursive(ir, external);
+  }
+
+  // ── Flat path (legacy; unchanged) ─────────────────────────────────────────
   // Match Mermaid's dagre setup so subgraph rank/column placement aligns with
   // the reference renderer. Mermaid uses `multigraph: true, compound: true`
   // with no explicit acyclicer and lets @dagrejs default-rank the graph.
@@ -370,71 +186,14 @@ export function layout(ir: IR): IR {
   for (const e of ir.edges) {
     const ge = g.edge(e.from, e.to, e.id);
     if (ge && ge.points) {
-      let pts = (ge.points as { x: number; y: number }[]).map(p => ({ x: p.x, y: p.y }));
-      const fromNode = nodesById.get(e.from);
-      const toNode   = nodesById.get(e.to);
-      if (pts.length >= 2 && fromNode && toNode) {
-        // Start endpoint: cluster border if rewritten from subgraph, else leaf shape.
-        if (e.fromCluster) {
-          const bbox = clusterBboxes.get(e.fromCluster);
-          if (bbox) {
-            // Drop dagre waypoints that fall INSIDE the cluster — they were
-            // routed for the leaf-anchored edge and cause curveBasis loops
-            // once we move pts[0] out to the cluster border. Keep popping
-            // pts[1] while it lies inside the cluster bbox; what remains is
-            // the first exterior waypoint dagre chose.
-            while (pts.length > 2 && pointInBbox(pts[1], bbox)) pts.splice(1, 1);
-            pts[0] = clipToClusterRect(bbox, pts[1]);
-          } else {
-            pts[0] = clipToBorder(fromNode, pts[1]);  // fallback if bbox unavailable
-          }
-        } else {
-          pts[0] = clipToBorder(fromNode, pts[1]);
-        }
-        // End endpoint: same dual path.
-        if (e.toCluster) {
-          const bbox = clusterBboxes.get(e.toCluster);
-          if (bbox) {
-            while (pts.length > 2 && pointInBbox(pts[pts.length - 2], bbox)) {
-              pts.splice(pts.length - 2, 1);
-            }
-            pts[pts.length - 1] = clipToClusterRect(bbox, pts[pts.length - 2]);
-          } else {
-            pts[pts.length - 1] = clipToBorder(toNode, pts[pts.length - 2]);
-          }
-        } else {
-          pts[pts.length - 1] = clipToBorder(toNode, pts[pts.length - 2]);
-        }
-      }
-      // Ensure at least 3 points for curveBasis to produce a smooth curve.
-      if (pts.length === 2) {
-        pts = [pts[0], { x: (pts[0].x + pts[1].x) / 2, y: (pts[0].y + pts[1].y) / 2 }, pts[1]];
-      }
+      const rawPts = (ge.points as { x: number; y: number }[]).map(p => ({ x: p.x, y: p.y }));
+      const pts = clipEdgeWaypoints(e, rawPts, clusterBboxes, nodesById);
       e.points = pts;
       e.originalPoints = pts.map(p => ({ ...p }));
     }
   }
 
   return ir;
-}
-
-// Inclusive bbox containment — used by the edge write-back to discard
-// dagre waypoints inside a cluster we're about to clip the endpoint out of.
-function pointInBbox(
-  p: { x: number; y: number },
-  b: { x: number; y: number; w: number; h: number },
-): boolean {
-  return p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h;
-}
-
-// All deep-descendant leaves of a cluster, recursively. Mutates `out`.
-function collectClusterLeaves(clusterId: string, ir: IR, out: IRNode[]): void {
-  for (const n of ir.nodes) {
-    if (n.parent === clusterId) out.push(n);
-  }
-  for (const sg of ir.subgraphs) {
-    if (sg.parent === clusterId) collectClusterLeaves(sg.id, ir, out);
-  }
 }
 
 // Pass-1.5 re-anchor. Only applies to clusters with externalConnections=false
@@ -452,9 +211,9 @@ function collectClusterLeaves(clusterId: string, ir: IR, out: IRNode[]): void {
 // first-DFS pick — which already matches Mermaid byte-for-byte (Cache_Lookup
 // for cyc2 API_Layer, D_Source for cyc4 Stage).
 //
-// `hasExternalConnection` checks each IR edge: if exactly one of its
-// endpoints is a descendant of the cluster (XOR), the edge crosses the
-// boundary. Cluster-endpoint edges themselves don't count — the cluster
+// `computeExternalConnections` (layout-core.ts) checks each IR edge: if exactly
+// one of its endpoints is a descendant of the cluster (XOR), the edge crosses
+// the boundary. Cluster-endpoint edges themselves don't count — the cluster
 // id is not a descendant of itself in Mermaid's isDescendant.
 //
 // ┌─── LOAD-BEARING INVARIANT ─────────────────────────────────────────────┐
@@ -465,8 +224,8 @@ function collectClusterLeaves(clusterId: string, ir: IR, out: IRNode[]): void {
 // │ Any IR pass that rewrites `e.from` / `e.to` MUST either preserve       │
 // │ `fromCluster` / `toCluster` unchanged, or clear them explicitly.       │
 // │ Silently dropping these annotations breaks:                            │
-// │   • this function's externalConnections check (false negative →        │
-// │     wrong anchor choice, e.g. cyc3 Halt drifts off the cluster).       │
+// │   • the externalConnections check (false negative → wrong anchor       │
+// │     choice, e.g. cyc3 Halt drifts off the cluster).                    │
 // │   • layout.ts edge writeback (clip target falls back to leaf shape).   │
 // │   • renderer.ts drag preview (line snaps to leaf during drag).         │
 // │   • routing.ts A* trim (path terminates on leaf, not cluster border).  │
@@ -478,27 +237,10 @@ function collectClusterLeaves(clusterId: string, ir: IR, out: IRNode[]): void {
 // └────────────────────────────────────────────────────────────────────────┘
 function reanchorClusterEdges(ir: IR, g: any): boolean {
   let changed = false;
-  const descendants = buildDescendantsMap(ir);
-  const hasExternal = (clusterId: string): boolean => {
-    const desc = descendants.get(clusterId);
-    if (!desc) return false;
-    // Use the ORIGINAL endpoint (the cluster id) when an edge was rewritten —
-    // otherwise the rewrite itself makes every cluster-anchored edge look
-    // boundary-crossing (e.g. Start→Pipeline rewritten to Start→D_Source
-    // would falsely report Pipeline as having external connections because
-    // D_Source is descendant of Pipeline but Start isn't). Per Mermaid's
-    // isDescendant: a cluster is NOT a descendant of itself, so an edge
-    // whose original endpoint IS the cluster contributes d=false on that
-    // side and doesn't trigger external.
-    for (const e of ir.edges) {
-      const src = e.fromCluster ?? e.from;
-      const dst = e.toCluster ?? e.to;
-      const d1 = desc.has(src);
-      const d2 = desc.has(dst);
-      if (d1 !== d2) return true;
-    }
-    return false;
-  };
+  // Clusters Mermaid would NOT encapsulate (a real boundary-crossing edge).
+  // For the complementary set (externalConnections=false), flat dagre needs
+  // the extremal-leaf correction below to mimic Mermaid's encapsulation.
+  const external = computeExternalConnections(ir);
   const leafCache = new Map<string, IRNode[]>();
   function leavesOf(id: string): IRNode[] {
     let l = leafCache.get(id);
@@ -527,14 +269,14 @@ function reanchorClusterEdges(ir: IR, g: any): boolean {
       return (wantMax ? ca > cb : ca < cb) ? a : b;
     });
   for (const e of ir.edges) {
-    if (e.fromCluster && !hasExternal(e.fromCluster)) {
+    if (e.fromCluster && !external.has(e.fromCluster)) {
       const leaves = leavesOf(e.fromCluster);
       if (leaves.length > 0) {
         const downstream = pickExtreme(leaves, downstreamIsMax);
         if (downstream.id !== e.from) { e.from = downstream.id; changed = true; }
       }
     }
-    if (e.toCluster && !hasExternal(e.toCluster)) {
+    if (e.toCluster && !external.has(e.toCluster)) {
       const leaves = leavesOf(e.toCluster);
       if (leaves.length > 0) {
         const upstream = pickExtreme(leaves, !downstreamIsMax);
@@ -543,39 +285,4 @@ function reanchorClusterEdges(ir: IR, g: any): boolean {
     }
   }
   return changed;
-}
-
-// Map cluster id → set of all descendant node + subgraph ids (deep).
-// Used by `hasExternalConnection` to detect boundary-crossing edges per
-// Mermaid's `isDescendant` semantics (the cluster itself is NOT a descendant
-// of itself).
-function buildDescendantsMap(ir: IR): Map<string, Set<string>> {
-  const childrenOf = new Map<string, string[]>();
-  for (const sg of ir.subgraphs) {
-    childrenOf.set(sg.id, []);
-  }
-  for (const sg of ir.subgraphs) {
-    if (sg.parent) childrenOf.get(sg.parent)!.push(sg.id);
-  }
-  for (const n of ir.nodes) {
-    if (n.parent) {
-      if (!childrenOf.has(n.parent)) childrenOf.set(n.parent, []);
-      childrenOf.get(n.parent)!.push(n.id);
-    }
-  }
-  const out = new Map<string, Set<string>>();
-  function collect(id: string, into: Set<string>): void {
-    const kids = childrenOf.get(id);
-    if (!kids) return;
-    for (const k of kids) {
-      into.add(k);
-      collect(k, into);
-    }
-  }
-  for (const sg of ir.subgraphs) {
-    const desc = new Set<string>();
-    collect(sg.id, desc);
-    out.set(sg.id, desc);
-  }
-  return out;
 }

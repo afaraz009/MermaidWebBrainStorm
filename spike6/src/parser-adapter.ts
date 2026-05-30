@@ -138,6 +138,10 @@ export async function parseToIR(source: string): Promise<IR> {
     parent: sgParentMap.get(sg.id),
     // children: only direct non-subgraph node children
     children: sg.nodes.filter((n: string) => !subgraphIds.has(n)),
+    // Declared per-subgraph direction (Mermaid's FlowSubGraph.dir). Keep
+    // `undefined` when the block declares none — DON'T default to 'TB' here, or
+    // recursive layout's flip-default for an encapsulated cluster never fires.
+    direction: sg.dir ? normalizeDirection(sg.dir) : undefined,
   }));
 
   // Map vertex id -> parent subgraph id
