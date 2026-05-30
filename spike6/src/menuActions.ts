@@ -156,24 +156,24 @@ export function deleteNode(ir: IR, nodeId: string): void {
   }
 }
 
+// Mint an edge id that won't collide with existing ones. Parser-adapter
+// stamps `L_<idx>`; we use a different prefix + random suffix so menu-minted
+// edges remain distinguishable and don't fight the parser's counter.
+function mintEdgeId(): string {
+  return `E_${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export function connectNodes(ir: IR, fromId: string, toId: string): IREdge {
-  const edge: IREdge = { from: fromId, to: toId, style: 'solid' };
+  const edge: IREdge = { id: mintEdgeId(), from: fromId, to: toId, style: 'solid' };
   ir.edges.push(edge);
   return edge;
 }
 
 // ── Edge actions ────────────────────────────────────────────────────────────
-// Edges are identified by `data-edge-key = ${from}__${to}` in the renderer.
-
-// Matches the renderer's edgeKey format: `${from}::${to}`.
-const EDGE_KEY_SEP = '::';
+// Edges are identified by `data-edge-key = <IREdge.id>` in the renderer.
 
 export function findEdgeByKey(ir: IR, key: string): IREdge | undefined {
-  const i = key.lastIndexOf(EDGE_KEY_SEP);
-  if (i < 0) return undefined;
-  const from = key.slice(0, i);
-  const to   = key.slice(i + EDGE_KEY_SEP.length);
-  return ir.edges.find(e => e.from === from && e.to === to);
+  return ir.edges.find(e => e.id === key);
 }
 
 export function editEdgeLabel(ir: IR, key: string, newLabel: string): void {
@@ -198,15 +198,13 @@ export function toggleEdgeDashed(ir: IR, key: string): void {
 export function duplicateEdge(ir: IR, key: string): IREdge | null {
   const e = findEdgeByKey(ir, key);
   if (!e) return null;
-  const clone: IREdge = { from: e.from, to: e.to, label: e.label, style: e.style };
+  const clone: IREdge = { id: mintEdgeId(), from: e.from, to: e.to, label: e.label, style: e.style };
   ir.edges.push(clone);
   return clone;
 }
 
 export function deleteEdge(ir: IR, key: string): void {
-  const e = findEdgeByKey(ir, key);
-  if (!e) return;
-  ir.edges = ir.edges.filter(x => !(x.from === e.from && x.to === e.to));
+  ir.edges = ir.edges.filter(x => x.id !== key);
 }
 
 // ── Subgraph actions ────────────────────────────────────────────────────────

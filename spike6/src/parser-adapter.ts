@@ -29,21 +29,40 @@ function findNonClusterChild(
   subgraphIds: Set<string>,
   clusterId: string,
   edges: { from: string; to: string }[],
+  vertexOrder: Map<string, number>,
 ): string | undefined {
   const sg = rawSubgraphsById.get(id);
   if (!sg) return id;  // already a leaf
 
   const subgraphChildren = (sg.nodes as string[]).filter(n => subgraphIds.has(n));
   const leafChildren = (sg.nodes as string[]).filter(n => !subgraphIds.has(n));
-  // Subgraphs reversed (matches sortNodesByHierarchy's sibling-reverse) then
-  // leaves in declaration order — equivalent to Mermaid's graph.children().
-  const ordered = [...subgraphChildren.slice().reverse(), ...leafChildren];
+  // Subgraphs in REVERSE declaration order, then leaves in VERTEX-MAP order
+  // (= first-appearance-in-parse order). Matches Mermaid's data4Layout
+  // (flowDiagram-DWJPFMVM.mjs:945): subgraphs pushed reverse-decl, then
+  // vertices iterated via `getVertices().forEach` (insertion order = parse
+  // order). When dagre setParent runs in that order, graph.children(parent)
+  // returns the same order.
+  //
+  // Why this matters: when a leaf appears as an edge endpoint BEFORE the
+  // subgraph block declaring it (e.g. `Start --> L2` on line 2, with the
+  // `subgraph Cluster ... L1 L2 ...` block on lines 5+), the leaf's
+  // first-appearance index is earlier than its sibling declared *only*
+  // inside the subgraph. In fixture_reserve_fallback Mermaid sees
+  // children(Cluster) = [L2, L1], reserve-fallback returns L1; with naive
+  // decl-order [L1, L2] we'd return L2 and the layout asymmetry visible in
+  // the screenshot results.
+  const sortedLeaves = leafChildren.slice().sort((a, b) => {
+    const ai = vertexOrder.get(a) ?? Number.MAX_SAFE_INTEGER;
+    const bi = vertexOrder.get(b) ?? Number.MAX_SAFE_INTEGER;
+    return ai - bi;
+  });
+  const ordered = [...subgraphChildren.slice().reverse(), ...sortedLeaves];
 
   if (ordered.length === 0) return undefined;
 
   let reserve: string | undefined;
   for (const child of ordered) {
-    const _id = findNonClusterChild(child, rawSubgraphsById, subgraphIds, clusterId, edges);
+    const _id = findNonClusterChild(child, rawSubgraphsById, subgraphIds, clusterId, edges, vertexOrder);
     if (!_id) continue;
     const common = findCommonEdges(edges, clusterId, _id);
     if (common.length > 0) {
@@ -143,7 +162,12 @@ export async function parseToIR(source: string): Promise<IR> {
     });
   });
 
-  const edges: IREdge[] = rawEdges.map((e: any) => ({
+  // `id` is the load-bearing edge identity (see types.ts IREdge). Position-
+  // based `L_<idx>` is stable across re-parse and matches Mermaid's own
+  // `L_<start>_<end>_<counter>` convention closely enough for downstream
+  // dagre/renderer keying. Format does not need to leave layout/renderer.
+  const edges: IREdge[] = rawEdges.map((e: any, idx: number) => ({
+    id: `L_${idx}`,
     from: e.start,
     to: e.end,
     label: e.text || undefined,
@@ -162,13 +186,24 @@ export async function parseToIR(source: string): Promise<IR> {
   // (Don't pass IREdge — findCommonEdges only needs from/to.)
   const rawEndpointPairs = edges.map(e => ({ from: e.from, to: e.to }));
 
+  // Vertex-first-appearance order — mirrors Mermaid's `getVertices()` Map
+  // iteration order, which (because Map preserves insertion order and
+  // Mermaid's parser inserts vertices on first encounter) equals
+  // first-appearance-in-source order. findNonClusterChild uses this to walk
+  // leaf children of a cluster the way Mermaid's `graph.children()` does.
+  const vertexOrder = new Map<string, number>();
+  {
+    let i = 0;
+    vertexMap.forEach((_v, id) => vertexOrder.set(id, i++));
+  }
+
   const rewrittenEdges: IREdge[] = [];
   for (const e of edges) {
     let { from, to } = e;
     let fromCluster: string | undefined;
     let toCluster: string | undefined;
     if (subgraphIds.has(from)) {
-      const leaf = findNonClusterChild(from, rawSubgraphsById, subgraphIds, from, rawEndpointPairs);
+      const leaf = findNonClusterChild(from, rawSubgraphsById, subgraphIds, from, rawEndpointPairs, vertexOrder);
       if (!leaf) {
         console.warn(`[parser-adapter] dropping edge from empty subgraph "${from}" → "${to}"`);
         continue;
@@ -177,7 +212,7 @@ export async function parseToIR(source: string): Promise<IR> {
       from = leaf;
     }
     if (subgraphIds.has(to)) {
-      const leaf = findNonClusterChild(to, rawSubgraphsById, subgraphIds, to, rawEndpointPairs);
+      const leaf = findNonClusterChild(to, rawSubgraphsById, subgraphIds, to, rawEndpointPairs, vertexOrder);
       if (!leaf) {
         console.warn(`[parser-adapter] dropping edge from "${e.from}" → empty subgraph "${to}"`);
         continue;

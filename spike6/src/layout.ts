@@ -295,9 +295,16 @@ export function layout(ir: IR): IR {
     if (n.parent) g.setParent(n.id, n.parent);
   }
 
+  // Pass IREdge.id (4th arg) so dagre's multigraph keeps duplicate (from,to)
+  // pairs distinct. Without a name, setEdge keys on (v,w,DEFAULT_EDGE_NAME)
+  // and a second call silently overwrites the first — which loses edges
+  // when findNonClusterChild's reserve-fallback rewrites a subgraph
+  // endpoint to a leaf that's already an endpoint of another explicit edge
+  // (see fixture_reserve_fallback.mmd). Mermaid's own dagre calls do the
+  // same thing with edge.id.
   for (const e of ir.edges) {
     const { w, h } = e.label ? edgeLabelSize(e.label) : { w: 0, h: 0 };
-    g.setEdge(e.from, e.to, { label: e.label || '', weight: 1, width: w, height: h });
+    g.setEdge(e.from, e.to, { label: e.label || '', weight: 1, width: w, height: h }, e.id);
   }
 
   dagreLayout(g, {});
@@ -317,7 +324,7 @@ export function layout(ir: IR): IR {
     for (const e of g.edges()) g.removeEdge(e);
     for (const e of ir.edges) {
       const { w, h } = e.label ? edgeLabelSize(e.label) : { w: 0, h: 0 };
-      g.setEdge(e.from, e.to, { label: e.label || '', weight: 1, width: w, height: h });
+      g.setEdge(e.from, e.to, { label: e.label || '', weight: 1, width: w, height: h }, e.id);
     }
     dagreLayout(g, {});
   }
@@ -358,7 +365,7 @@ export function layout(ir: IR): IR {
   const clusterBboxes = computeClusterBboxes(ir);
   const nodesById = new Map(ir.nodes.map(n => [n.id, n]));
   for (const e of ir.edges) {
-    const ge = g.edge(e.from, e.to);
+    const ge = g.edge(e.from, e.to, e.id);
     if (ge && ge.points) {
       let pts = (ge.points as { x: number; y: number }[]).map(p => ({ x: p.x, y: p.y }));
       const fromNode = nodesById.get(e.from);

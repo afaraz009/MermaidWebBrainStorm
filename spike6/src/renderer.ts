@@ -36,9 +36,11 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 const ARROW_TIP_LEN = 10;
 const ARROW_MARKER_ID = 'arrow';
 
-// '::' is safe — Mermaid node IDs never contain it.
-export function edgeKey(from: string, to: string): string {
-  return `${from}::${to}`;
+// Edge keys are the IR edge `id` (stamped by parser-adapter, see types.ts).
+// Keying by `id` (not `${from}::${to}`) is what lets duplicate (from,to)
+// edges coexist in the renderer's per-edge maps and DOM nodes.
+export function edgeKey(e: IREdge): string {
+  return e.id;
 }
 
 interface MountMeta {
@@ -699,7 +701,7 @@ export function renderFull(ir: IR, mountEl: SVGElement, interactive = false, ori
   for (const n of ir.nodes) adjacency.set(n.id, []);
 
   for (const e of ir.edges) {
-    const key = edgeKey(e.from, e.to);
+    const key = edgeKey(e);
     edgeMap.set(key, e);
     adjacency.get(e.from)?.push(key);
     adjacency.get(e.to)?.push(key);
@@ -718,7 +720,7 @@ export function renderFull(ir: IR, mountEl: SVGElement, interactive = false, ori
   edgeGroup.setAttribute('class', 'edges');
 
   for (const e of ir.edges) {
-    const key = edgeKey(e.from, e.to);
+    const key = edgeKey(e);
     const pts = displayPoints.get(key);
     if (!pts || pts.length === 0) continue;
 
@@ -1075,7 +1077,7 @@ export function refreshEdgesFromLayout(mountEl: SVGElement): void {
   if (!meta) return;
 
   for (const e of meta.ir.edges) {
-    const key = edgeKey(e.from, e.to);
+    const key = edgeKey(e);
     const ep = initialEdgePoints(e);
     if (!ep) continue;
     const pts = ep.pts;

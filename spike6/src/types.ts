@@ -33,6 +33,13 @@ export interface IRNode {
 }
 
 export interface IREdge {
+  // Unique within an IR — load-bearing identity. Two edges may share
+  // (from, to) when findNonClusterChild's reserve-fallback rewrites a
+  // subgraph endpoint to a leaf that's already an explicit endpoint of
+  // another edge (see fixture_reserve_fallback.mmd). Renderer keys edges
+  // by `id` (not (from,to)) and layout passes `id` as dagre's multigraph
+  // edge name so duplicates survive end-to-end.
+  id: string;
   from: string;
   to: string;
   label?: string;

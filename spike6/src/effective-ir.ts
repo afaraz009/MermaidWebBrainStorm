@@ -75,15 +75,26 @@ export function deriveEffectiveIR(ir: IR): IR {
     return root ? surrogateIdFor(root) : id;
   }
 
-  const seen = new Set<string>();
+  // Dedup applies ONLY to surrogate edges produced by collapse — i.e. edges
+  // where remap() actually changed an endpoint. Without this gate, two
+  // distinct IR edges that legitimately share a (from, to) pair (e.g. the
+  // findNonClusterChild reserve-fallback case in fixture_reserve_fallback.mmd
+  // where rewriting Start→Cluster to Start→L2 collides with an explicit
+  // Start→L2 edge) would silently merge here. The collapse fan-out dedup
+  // case still applies: multiple A→Z, B→Z edges where A and B both collapse
+  // into surrogate-X dedup to one surrogate-X→Z.
+  const seenSurrogate = new Set<string>();
   const edges: IREdge[] = [];
   for (const e of ir.edges) {
     const from = remap(e.from);
     const to = remap(e.to);
     if (from === to) continue; // interior edge
-    const key = from + '\x00' + to;
-    if (seen.has(key)) continue;
-    seen.add(key);
+    const remapped = from !== e.from || to !== e.to;
+    if (remapped) {
+      const key = from + '\x00' + to;
+      if (seenSurrogate.has(key)) continue;
+      seenSurrogate.add(key);
+    }
     // Cluster-anchor annotations: preserve a side's annotation ONLY if that
     // side wasn't remapped into a surrogate. When a side gets collapsed into
     // a surrogate, the original cluster id no longer resolves to anything in
@@ -102,6 +113,7 @@ export function deriveEffectiveIR(ir: IR): IR {
     // (annotations always equal the pre-rewrite original endpoint OR are
     // absent); we just clear them where they'd be unresolvable.
     edges.push({
+      id: e.id,
       from, to,
       label: e.label, style: e.style,
       fromCluster: from === e.from ? e.fromCluster : undefined,

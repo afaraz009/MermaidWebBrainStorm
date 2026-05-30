@@ -194,12 +194,8 @@ function buildNodeMenu(nodeId: string, ir: IR, rerender: () => void): MenuItem[]
 }
 
 function buildEdgeMenu(key: string, ir: IR, rerender: () => void): MenuItem[] {
-  // Edge keys use '::' as separator (see renderer.ts edgeKey()).
-  const sep = '::';
-  const i = key.lastIndexOf(sep);
-  const from = i >= 0 ? key.slice(0, i) : key;
-  const to   = i >= 0 ? key.slice(i + sep.length) : '';
-  const edge = ir.edges.find(e => e.from === from && e.to === to);
+  // Edge keys are the IR edge `id` (see renderer.ts edgeKey()).
+  const edge = ir.edges.find(e => e.id === key);
   if (!edge) return [];
 
   return [
