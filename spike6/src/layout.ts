@@ -237,7 +237,10 @@ export function layout(ir: IR): IR {
   // with no explicit acyclicer and lets @dagrejs default-rank the graph.
   const g = new graphlib.Graph({ multigraph: true, compound: true });
   g.setGraph({
-    rankdir: 'TB',
+    // Honour the diagram's declared flow direction (TB/BT/LR/RL). Flat dagre
+    // applies one rankdir to the whole graph — per-subgraph `direction`
+    // overrides are not modelled (known parity gap).
+    rankdir: ir.direction ?? 'TB',
     nodesep: 50,
     ranksep: 50,
     marginx: 8,
@@ -505,25 +508,37 @@ function reanchorClusterEdges(ir: IR, g: any): boolean {
     leafCache.set(id, l);
     return l;
   }
-  // Read Y from g (dagre's output) rather than n.y, since IR write-back
-  // hasn't happened yet at this point.
-  const yOf = (id: string): number => {
+  // Extremal-leaf selection runs along the FLOW axis, not always Y. Read the
+  // coordinate from g (dagre's output) since IR write-back hasn't happened
+  // yet. For LR/RL the flow runs along X; for TB/BT along Y. The "downstream"
+  // end (where an outgoing cluster edge should leave from) is the larger
+  // coordinate for TB/LR and the smaller for BT/RL — mirror it for incoming.
+  // TB stays byte-identical to the previous Y-max/Y-min logic.
+  const horizontal = ir.direction === 'LR' || ir.direction === 'RL';
+  const downstreamIsMax = ir.direction !== 'BT' && ir.direction !== 'RL';
+  const coordOf = (id: string): number => {
     const gn = g.node(id);
-    return gn ? gn.y : 0;
+    if (!gn) return 0;
+    return horizontal ? gn.x : gn.y;
   };
+  const pickExtreme = (leaves: IRNode[], wantMax: boolean): IRNode =>
+    leaves.reduce((a, b) => {
+      const ca = coordOf(a.id), cb = coordOf(b.id);
+      return (wantMax ? ca > cb : ca < cb) ? a : b;
+    });
   for (const e of ir.edges) {
     if (e.fromCluster && !hasExternal(e.fromCluster)) {
       const leaves = leavesOf(e.fromCluster);
       if (leaves.length > 0) {
-        const bottom = leaves.reduce((a, b) => (yOf(a.id) > yOf(b.id) ? a : b));
-        if (bottom.id !== e.from) { e.from = bottom.id; changed = true; }
+        const downstream = pickExtreme(leaves, downstreamIsMax);
+        if (downstream.id !== e.from) { e.from = downstream.id; changed = true; }
       }
     }
     if (e.toCluster && !hasExternal(e.toCluster)) {
       const leaves = leavesOf(e.toCluster);
       if (leaves.length > 0) {
-        const top = leaves.reduce((a, b) => (yOf(a.id) < yOf(b.id) ? a : b));
-        if (top.id !== e.to) { e.to = top.id; changed = true; }
+        const upstream = pickExtreme(leaves, !downstreamIsMax);
+        if (upstream.id !== e.to) { e.to = upstream.id; changed = true; }
       }
     }
   }

@@ -1,0 +1,26 @@
+flowchart LR
+
+    %% =========================
+    %% KNOWN-GAP PROBE. Top-level flow is LR, but the `Stack` subgraph
+    %% declares `direction TB`. Mermaid lays Stack out top-down (its nodes
+    %% stacked vertically) while the rest flows left-to-right. Our flat dagre
+    %% applies a single rankdir (LR) to the whole graph, so Stack will render
+    %% horizontally here — the expected divergence from the reference. Use
+    %% this to gauge how visually disruptive the per-subgraph-direction gap is.
+    %% =========================
+
+    Start([Start]) --> Stack
+
+    subgraph Stack [Vertical Stack]
+        direction TB
+        T1[Top] --> T2[Middle] --> T3[Bottom]
+    end
+
+    Stack --> Flow
+
+    subgraph Flow [Horizontal Flow]
+        direction LR
+        F1[One] --> F2[Two] --> F3[Three]
+    end
+
+    Flow --> End([End])

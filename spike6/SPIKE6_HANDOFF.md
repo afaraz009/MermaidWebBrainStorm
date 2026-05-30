@@ -116,14 +116,3 @@ Specific parity checkpoints to re-verify if layout changes:
   guard; would break silently on a Mermaid major bump.
 - These were explicitly deferred — see prior session's plan at
   `C:\Users\ahmed\.claude\plans\wiggly-drifting-ullman.md`.
-
-## How to verify any change
-
-```bash
-cd D:\CODE\MermaidBrainStorm\spike6
-npx tsc --noEmit     # must be silent
-npx vite build       # must succeed
-npx vite             # then load ?fixture=NAME.mmd in browser, compare panes
-```
-Commit only when the user asks; `spike6` is the working branch, `main` is
-the PR target.

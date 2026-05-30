@@ -1,0 +1,20 @@
+flowchart BT
+
+    %% =========================
+    %% Bottom-to-top flow (build pipeline rising from source to release).
+    %% Exercises BT rankdir: ranks grow upward, so the reanchor pass must
+    %% pick the TOP-most leaf as the downstream end of an outgoing cluster
+    %% edge (inverted from TB).
+    %% =========================
+
+    Source([Source Code]) --> Build
+
+    subgraph Build [Build Pipeline]
+        direction BT
+        Compile[Compile] --> Test[[Run Tests]] --> Package[Package]
+    end
+
+    Build --> Release([Release])
+
+    %% A side artifact branch to make vertical ordering observable.
+    Test --> Coverage[/Coverage Report/]

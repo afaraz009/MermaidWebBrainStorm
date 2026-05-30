@@ -1,4 +1,4 @@
-import type { IR, IRNode, IREdge, IRSubgraph, NodeShape } from './types.js';
+import type { IR, IRNode, IREdge, IRSubgraph, NodeShape, Direction } from './types.js';
 
 // Mermaid-faithful anchor leaf finder for cluster-endpoint edges. When an IR
 // edge has a subgraph id as endpoint, we must rewrite the endpoint to one of
@@ -105,6 +105,11 @@ export async function parseToIR(source: string): Promise<IR> {
   // mermaid.parse() in v10+ returns a Diagram object with a db property.
   const diagram = await mermaid.mermaidAPI.getDiagramFromText(source);
   const db = (diagram as any).db;
+
+  // Top-level diagram direction. Mermaid normalises arrows internally but
+  // still returns 'TD' for top-down; fold it onto dagre's 'TB'. Anything
+  // unrecognised falls back to 'TB' so the diagram still lays out.
+  const direction = normalizeDirection(db.getDirection?.());
 
   // getVertices() returns Map<string, FlowVertex>
   const vertexMap: Map<string, any> = db.getVertices();
@@ -227,7 +232,20 @@ export async function parseToIR(source: string): Promise<IR> {
     }
   }
 
-  return { nodes, edges: rewrittenEdges, subgraphs };
+  return { nodes, edges: rewrittenEdges, subgraphs, direction };
+}
+
+// Fold Mermaid's direction string onto the dagre rankdir set. 'TD' is
+// Mermaid's spelling of top-down; dagre calls it 'TB'. Empty/unknown → 'TB'.
+function normalizeDirection(dir: string | undefined): Direction {
+  switch (dir) {
+    case 'BT': return 'BT';
+    case 'LR': return 'LR';
+    case 'RL': return 'RL';
+    case 'TB':
+    case 'TD':
+    default:   return 'TB';
+  }
 }
 
 // Mermaid's `vertex.type` covers the full FlowVertexTypeParam union; we

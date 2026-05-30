@@ -137,7 +137,7 @@ export function deriveEffectiveIR(ir: IR): IR {
     });
   }
 
-  return { nodes, edges, subgraphs };
+  return { nodes, edges, subgraphs, direction: ir.direction };
 }
 
 // Total descendant nodes (deep) of `sgId`, used for the surrogate count badge.

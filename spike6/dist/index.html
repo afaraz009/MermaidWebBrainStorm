@@ -56,6 +56,13 @@
       <option value="fixture_cyclic_nested_3.mmd">cyclic-nested 3 (two independent cycles)</option>
       <option value="fixture_cyclic_nested_4.mmd">cyclic-nested 4 (diamond + back-edge SCC)</option>
       <option value="fixture_reserve_fallback.mmd">fixture_reserve_fallback </option>
+      <option disabled>──── direction / multi-level ────</option>
+      <option value="fixture_lr_nested.mmd">LR — 3-level nested + cluster→cluster</option>
+      <option value="fixture_rl_chain.mmd">RL — pipeline (right-to-left)</option>
+      <option value="fixture_bt_pipeline.mmd">BT — build pipeline (bottom-up)</option>
+      <option value="fixture_deep_5level.mmd">TB — 5-level deep (collapse stress)</option>
+      <option value="fixture_lr_cyclic.mmd">LR — cross-cluster cycle</option>
+      <option value="fixture_lr_subdir.mmd">LR — per-subgraph direction (KNOWN GAP)</option>
     </select>
     <span style="margin-left:auto;color:#666;">left: Mermaid reference &nbsp;|&nbsp; right: A* renderer (drag a node)</span>
   </div>

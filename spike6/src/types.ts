@@ -64,8 +64,17 @@ export interface IRSubgraph {
   collapsed?: boolean;
 }
 
+// Top-level flow direction, normalised from Mermaid's `db.getDirection()`
+// (TD→TB). Maps 1:1 onto dagre's `rankdir`. Per-subgraph `direction`
+// overrides are NOT represented here — flat dagre applies a single rankdir
+// to the whole graph, so a nested subgraph declaring a direction different
+// from the top-level one is a known parity gap (see fixture_lr_subdir.mmd).
+export type Direction = 'TB' | 'BT' | 'LR' | 'RL';
+
 export interface IR {
   nodes: IRNode[];
   edges: IREdge[];
   subgraphs: IRSubgraph[];
+  // Defaults to 'TB' when the source omits a direction.
+  direction?: Direction;
 }
