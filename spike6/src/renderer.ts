@@ -385,6 +385,7 @@ export function buildSideAwareCurvesForNode(
   type Item = { ref: unknown; peer: IRNode; isOutgoing: boolean; peerCluster?: BBox };
   const bySide: Record<Side, Item[]> = { top: [], bottom: [], left: [], right: [] };
   const overlapItems: Item[] = [];
+  const out = new Map<unknown, { x: number; y: number }[]>();
 
   for (const e of edges) {
     const isOutgoing = e.from === pivotNode.id;
@@ -394,6 +395,34 @@ export function buildSideAwareCurvesForNode(
     // Peer side cluster annotation: outgoing → toCluster, incoming → fromCluster.
     const peerClusterId = isOutgoing ? e.toCluster : e.fromCluster;
     const peerCluster = peerClusterId ? clusterBboxes?.get(peerClusterId) : undefined;
+
+    // PIVOT-side cluster annotation: the dragged node is itself the rewritten
+    // representative leaf of a cluster→X edge (outgoing → fromCluster, incoming
+    // → toCluster). The visible endpoint on the pivot side is the CLUSTER border,
+    // not this leaf — so anchor cluster-border ↔ peer and DON'T fan the edge out
+    // on the pivot. Without this, dragging an interior leaf (e.g. Open Doc inside
+    // the Productivity cluster) drags the cluster's external edge (Productivity→
+    // Halt) onto the leaf. The cluster border itself tracks the drag as the
+    // cluster resizes (see computeClusterBboxes / drag.ts ancestor-rect clear).
+    const pivotClusterId = isOutgoing ? e.fromCluster : e.toCluster;
+    const pivotCluster = pivotClusterId ? clusterBboxes?.get(pivotClusterId) : undefined;
+    if (pivotCluster) {
+      const pivotCenter = { x: pivotCluster.x + pivotCluster.w / 2, y: pivotCluster.y + pivotCluster.h / 2 };
+      const peerCenter = peerCluster
+        ? { x: peerCluster.x + peerCluster.w / 2, y: peerCluster.y + peerCluster.h / 2 }
+        : { x: peer.x ?? 0, y: peer.y ?? 0 };
+      const pivotAnchor = clipToClusterRect(pivotCluster, peerCenter);
+      const peerAnchor = peerCluster
+        ? clipToClusterRect(peerCluster, pivotCenter)
+        : clipToBorder(peer, pivotCenter);
+      const pivotStub = stubAlongNormal(pivotCenter, pivotAnchor, stubDist);
+      const peerStub = stubAlongNormal(peerCenter, peerAnchor, stubDist);
+      out.set(e.ref, isOutgoing
+        ? [pivotAnchor, pivotStub, peerStub, peerAnchor]
+        : [peerAnchor, peerStub, pivotStub, pivotAnchor]);
+      continue;
+    }
+
     // For axis/side classification, use the cluster's rectangle when the peer
     // is cluster-anchored — otherwise the leaf's tiny bbox would pick the
     // wrong side once the pivot is dragged across the cluster boundary.
@@ -406,8 +435,6 @@ export function buildSideAwareCurvesForNode(
       bySide[side].push({ ref: e.ref, peer, isOutgoing, peerCluster });
     }
   }
-
-  const out = new Map<unknown, { x: number; y: number }[]>();
 
   // Overlap edges — radial clip-to-border on both endpoints. Smooth and
   // continuous; no side-snap. Stub away from each anchor along the local

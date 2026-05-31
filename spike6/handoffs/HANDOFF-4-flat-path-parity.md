@@ -239,6 +239,35 @@ divergence, not a label issue). Drag: dragging C_Process lands the `retry` label
 the path's geometric middle, not the arrowhead. `tsc --noEmit` clean; no NaN across
 all 16 fixtures; every labelled edge gets a labelPos.
 
+### Drag bugs on cluster-anchored edges — FIXED (2026-05-31)
+
+Two drag-time regressions surfaced once all-external graphs route through the
+recursive engine (`fixture_cyclic_nested_3`, `Productivity` cluster):
+
+1. **Containing cluster didn't resize when an interior node was dragged.** Only
+   external clusters (those with a recorded `ir.clusterRects` dagre box) froze;
+   encapsulated clusters (leaf-bbox path) always resized — hence "many but not
+   all." Root cause: `computeClusterBboxes` returns the recorded rect verbatim,
+   so moved leaves never grow/shrink it. **Fix (`drag.ts`):** on the FIRST move
+   of a drag, delete the dragged node's cluster-ancestry entries
+   (`ancestorClusterIds`) from `ir.clusterRects`, so those clusters recompute
+   from live leaves like encapsulated ones do. Done on first move (not mousedown)
+   so a plain click doesn't reshape anything. Untouched clusters keep their dagre
+   box.
+2. **Dragging a cluster's representative leaf dragged the cluster's external edge
+   onto that leaf.** `Productivity --> Halt` is rewritten to `from=Rev_Open`
+   (`fromCluster='Productivity'`); dragging `Rev_Open` (Open Doc) made Halt
+   connect to Open Doc instead of the Productivity border. The side-aware builder
+   only honoured cluster anchoring on the PEER side; when the PIVOT is the
+   rewritten leaf it treated the pivot as the literal endpoint. **Fix
+   (`renderer.ts buildSideAwareCurvesForNode`):** detect the pivot-side cluster
+   (`isOutgoing ? fromCluster : toCluster`); when set, anchor the edge
+   cluster-border ↔ peer (radial clip, like the overlap case) and skip the pivot
+   fan-out. The border itself tracks the drag via fix (1). Verified: rebuilt to a
+   4-pt curve anchored on the cluster border (185.4,1602.3 = Halt-centre-aligned
+   clip on the cluster bottom), `tsc` clean, no console errors. Peer-side cluster
+   drag (e.g. dragging `DP_Reporter`) is unchanged — pivot has no cluster flag.
+
 ### Verification harness gotchas (hard-won — read before re-probing)
 - `window.__dump` entries are OBJECTS `{method, args:[fmtStr, colorStr, msgStr,
   ...data]}`. Message = `args[2]`. For `"Graph after layout"`, the graph is a
