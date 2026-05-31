@@ -11,8 +11,24 @@ import { edgeSettings } from './edgeSettings.js';
 import { layout } from './layout.js';
 import type { IR } from './types.js';
 
+// Innermost→outermost cluster ids containing `nodeId` (the subgraph whose direct
+// children include it, then up the parent chain). Used to invalidate frozen
+// dagre compound-box rects when an interior node is dragged.
+function ancestorClusterIds(ir: IR, nodeId: string): string[] {
+  const byId = new Map(ir.subgraphs.map(s => [s.id, s]));
+  let cur = ir.subgraphs.find(s => s.children.includes(nodeId));
+  const out: string[] = [];
+  while (cur) {
+    out.push(cur.id);
+    cur = cur.parent ? byId.get(cur.parent) : undefined;
+  }
+  return out;
+}
+
 export function attachDrag(svg: SVGSVGElement, ir: IR, mountEl: SVGElement): () => void {
-  let dragging: { id: string; offsetX: number; offsetY: number; moved: boolean } | null = null;
+  let dragging:
+    | { id: string; offsetX: number; offsetY: number; moved: boolean; ancestors: string[] }
+    | null = null;
   const ac = new AbortController();
   const opts: AddEventListenerOptions = { signal: ac.signal };
 
@@ -24,13 +40,25 @@ export function attachDrag(svg: SVGSVGElement, ir: IR, mountEl: SVGElement): () 
     const node = ir.nodes.find(n => n.id === id);
     if (!node) return;
     const pt = toSVGPoint(svg, e);
-    dragging = { id, offsetX: pt.x - (node.x ?? 0), offsetY: pt.y - (node.y ?? 0), moved: false };
+    dragging = {
+      id, offsetX: pt.x - (node.x ?? 0), offsetY: pt.y - (node.y ?? 0), moved: false,
+      ancestors: ancestorClusterIds(ir, id),
+    };
     (target as SVGElement).style.cursor = 'grabbing';
     e.preventDefault();
   }, opts);
 
   window.addEventListener('mousemove', (e: MouseEvent) => {
     if (!dragging) return;
+    if (!dragging.moved && ir.clusterRects) {
+      // First actual move: the dragged node's ancestor clusters carry frozen
+      // dagre compound-box rects (recorded for external clusters in the all-
+      // external/recursive path). They won't track the node, so drop them and
+      // let computeClusterBboxes recompute those clusters from live leaf
+      // positions — same as encapsulated clusters already do. Done on first move
+      // (not mousedown) so a plain click doesn't reshape any cluster.
+      for (const cid of dragging.ancestors) ir.clusterRects.delete(cid);
+    }
     dragging.moved = true;
     const pt = toSVGPoint(svg, e);
     updateNodePosition(

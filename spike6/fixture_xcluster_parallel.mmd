@@ -1,0 +1,33 @@
+flowchart TD
+
+    %% =========================
+    %% BREAK ATTEMPT 1 — Parallel labelled edges between the SAME two
+    %% clusters, in BOTH directions. Stresses: edge-label placement when
+    %% several label dummies rank close together, and dagre multi-edge
+    %% fan between two compound boxes. If labels stack/collide or paths
+    %% cross, the labelPos-snap rule has a gap.
+    %% =========================
+
+    Start([Start]) --> Producer
+
+    subgraph Producer [Producer Cluster]
+        direction TB
+        P_Emit[Emit]
+        P_Batch[/Batch/]
+        P_Emit --> P_Batch
+    end
+
+    subgraph Consumer [Consumer Cluster]
+        direction TB
+        C_Recv[Receive]
+        C_Ack[Acknowledge]
+        C_Recv --> C_Ack
+    end
+
+    P_Batch -->|stream A| C_Recv
+    P_Batch -->|stream B| C_Recv
+    P_Emit  -->|priority| C_Ack
+    C_Ack   -.->|backpressure| P_Emit
+    C_Ack   -.->|retry| P_Batch
+
+    Consumer --> Done([Done])

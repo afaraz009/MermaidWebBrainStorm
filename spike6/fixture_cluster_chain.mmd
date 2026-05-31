@@ -1,0 +1,39 @@
+flowchart TD
+
+    %% =========================
+    %% BREAK ATTEMPT 3 — Direct cluster→cluster edges with NO leaf
+    %% endpoints (subgraph-id --> subgraph-id), chained A->B->C and a
+    %% back-edge C-->A. These are exactly the edges Mermaid rewrites via
+    %% adjustClustersAndEdges, and the ones that DO set fromCluster/
+    %% toCluster. Tests the subgraph-id rewrite + anchor selection +
+    %% cluster-to-cluster cycle break.
+    %% =========================
+
+    Ingest([Ingest]) --> Alpha
+
+    subgraph Alpha [Alpha Stage]
+        direction TB
+        A1[Normalize]
+        A2[Validate]
+        A1 --> A2
+    end
+
+    subgraph Beta [Beta Stage]
+        direction TB
+        B1[Transform]
+        B2[/Enrich/]
+        B1 --> B2
+    end
+
+    subgraph Gamma [Gamma Stage]
+        direction TB
+        G1[[Aggregate]]
+        G2[(Persist)]
+        G1 --> G2
+    end
+
+    Alpha -->|promote| Beta
+    Beta  -->|promote| Gamma
+    Gamma -.->|recycle| Alpha
+
+    Gamma --> Sink([Sink])

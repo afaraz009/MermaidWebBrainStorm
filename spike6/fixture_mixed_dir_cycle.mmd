@@ -1,0 +1,29 @@
+flowchart TD
+
+    %% =========================
+    %% BREAK ATTEMPT 5 — LR cluster nested inside a TB parent, with a
+    %% cross-boundary CYCLE that spans the direction change. Tests
+    %% per-subgraph direction inheritance + cycle-break when the
+    %% back-edge crosses a rankdir boundary. If the inner LR cluster gets
+    %% laid out TB or the cycle folds wrong, direction handling has a gap.
+    %% =========================
+
+    Boot([Boot]) --> Outer
+
+    subgraph Outer [Outer TB]
+        direction TB
+        O_Top[Top]
+
+        subgraph Inner [Inner LR]
+            direction LR
+            I_A[A] --> I_B[B] --> I_C[C]
+            I_C -.->|loop| I_A
+        end
+
+        O_Bottom[Bottom]
+        O_Top --> Inner
+        Inner --> O_Bottom
+    end
+
+    O_Bottom -.->|feedback| O_Top
+    Outer --> Done([Done])
