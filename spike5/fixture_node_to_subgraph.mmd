@@ -1,0 +1,12 @@
+flowchart TD
+    Entry([Entry]) --> Platform
+    Platform --> Done([Done])
+
+    subgraph Platform [Platform]
+        direction TB
+        Ingress[Ingress]
+        Router{Router}
+        Egress[Egress]
+        Ingress --> Router
+        Router --> Egress
+    end

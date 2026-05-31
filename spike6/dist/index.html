@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Spike 5 — Layout parity experiments</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      grid-template-rows: 36px 1fr;
+      height: 100vh;
+      font-family: sans-serif;
+      background: #f0f0f0;
+      gap: 2px;
+    }
+    .toolbar {
+      grid-column: 1 / -1;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 0 12px;
+      background: #e0e0e0;
+      font-size: 13px;
+    }
+    .toolbar label { font-weight: 600; color: #333; }
+    .toolbar select {
+      padding: 4px 8px;
+      font-size: 13px;
+      border: 1px solid #888;
+      border-radius: 3px;
+      background: white;
+    }
+    iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+      background: white;
+    }
+  </style>
+</head>
+<body>
+  <div class="toolbar">
+    <label for="fixture-select">Fixture:</label>
+    <select id="fixture-select">
+      <option value="fixture.mmd">small</option>
+      <option value="fixture200.mmd">200-node</option>
+      <option value="fixture_shapes.mmd">shape gallery</option>
+      <option value="fixture_nested.mmd">deep nesting (4 levels)</option>
+      <option value="fixture_crosscluster.mmd">cross-cluster edge labels</option>
+      <option value="fixture_crosscluster_acyclic.mmd">cross-cluster acyclic (control)</option>
+      <option value="fixture_node_to_subgraph.mmd">node → subgraph (Spike 5 crash repro)</option>
+      <option value="fixture_cyclic_nested_1.mmd">cyclic-nested 1 (L4 two-cluster cycle)</option>
+      <option value="fixture_cyclic_nested_2.mmd">cyclic-nested 2 (cross-level back-edges)</option>
+      <option value="fixture_cyclic_nested_3.mmd">cyclic-nested 3 (two independent cycles)</option>
+      <option value="fixture_cyclic_nested_4.mmd">cyclic-nested 4 (diamond + back-edge SCC)</option>
+      <option value="fixture_reserve_fallback.mmd">fixture_reserve_fallback </option>
+      <option disabled>──── direction / multi-level ────</option>
+      <option value="fixture_lr_nested.mmd">LR — 3-level nested + cluster→cluster</option>
+      <option value="fixture_rl_chain.mmd">RL — pipeline (right-to-left)</option>
+      <option value="fixture_bt_pipeline.mmd">BT — build pipeline (bottom-up)</option>
+      <option value="fixture_deep_5level.mmd">TB — 5-level deep (collapse stress)</option>
+      <option value="fixture_lr_cyclic.mmd">LR — cross-cluster cycle</option>
+      <option value="fixture_lr_subdir.mmd">LR — per-subgraph direction (KNOWN GAP)</option>
+    </select>
+    <span style="margin-left:auto;color:#666;">left: Mermaid reference &nbsp;|&nbsp; right: A* renderer (drag a node)</span>
+  </div>
+  <iframe id="left"  src="mermaid-reference.html?fixture=fixture.mmd"></iframe>
+  <iframe id="right" src="our-renderer.html?fixture=fixture.mmd"></iframe>
+
+  <script>
+    const sel = document.getElementById('fixture-select');
+    const left = document.getElementById('left');
+    const right = document.getElementById('right');
+    sel.addEventListener('change', () => {
+      const f = sel.value;
+      left.src  = 'mermaid-reference.html?fixture=' + f;
+      right.src = 'our-renderer.html?fixture=' + f;
+    });
+  </script>
+</body>
+</html>

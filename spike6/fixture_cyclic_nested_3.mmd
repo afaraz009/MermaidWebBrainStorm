@@ -1,0 +1,58 @@
+flowchart TD
+
+    %% =========================
+    %% Cyclic-nested fixture 3 — Two independent cycles at different
+    %% depths. Cycle A is between two top-level subgraphs (depth 1).
+    %% Cycle B is between two depth-3 subgraphs inside a third top-level
+    %% cluster. Tests cycle-breaking when the back-edges live in
+    %% structurally separate parts of the graph.
+    %% =========================
+
+    Boot([Boot]) --> ControlPlane
+
+    %% --- Cycle A: ControlPlane <-> DataPlane (depth 1) ---
+    subgraph ControlPlane [Control Plane]
+        direction TB
+        CP_Scheduler{Scheduler}
+        CP_Dispatcher[Dispatcher]
+        CP_Scheduler --> CP_Dispatcher
+    end
+
+    subgraph DataPlane [Data Plane]
+        direction TB
+        DP_Worker[[Worker]]
+        DP_Reporter[Reporter]
+        DP_Worker --> DP_Reporter
+    end
+
+    CP_Dispatcher --> DP_Worker
+    DP_Reporter -.->|status| CP_Scheduler
+
+    %% --- Cycle B: ProdA <-> ProdB inside the Productivity cluster (depth 3) ---
+    subgraph Productivity [Productivity Subsystem]
+        direction TB
+
+        subgraph Apps [Apps]
+            direction TB
+
+            subgraph ProdA [Editor]
+                direction TB
+                Ed_Compose[Compose]
+                Ed_Save[(Save)]
+                Ed_Compose --> Ed_Save
+            end
+
+            subgraph ProdB [Reviewer]
+                direction TB
+                Rev_Open[Open Doc]
+                Rev_Comment[/Comment/]
+                Rev_Open --> Rev_Comment
+            end
+
+            Ed_Save --> Rev_Open
+            Rev_Comment -.->|edit| Ed_Compose
+        end
+    end
+
+    DP_Reporter --> Productivity
+    Productivity --> Halt([Halt])

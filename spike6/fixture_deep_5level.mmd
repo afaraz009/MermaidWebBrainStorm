@@ -1,0 +1,34 @@
+flowchart TD
+
+    %% =========================
+    %% Five levels of nesting (L1 ⊃ L2 ⊃ L3 ⊃ L4 ⊃ leaves), top-down.
+    %% Primary purpose: stress collapse/expand at every depth and the
+    %% nested-cluster bbox stacking the renderer paints shallow→deep.
+    %% A sibling cluster (Side) at L2 keeps the deep chain from being a
+    %% trivial single column.
+    %% =========================
+
+    Root([Root]) --> L1
+
+    subgraph L1 [Level 1]
+        direction TB
+        subgraph L2 [Level 2]
+            direction TB
+            subgraph L3 [Level 3]
+                direction TB
+                subgraph L4 [Level 4]
+                    direction TB
+                    Leaf1[Leaf One]
+                    Leaf2[Leaf Two]
+                    Leaf1 --> Leaf2
+                end
+            end
+            subgraph Side [Side Branch]
+                direction TB
+                S1[Aux A] --> S2[Aux B]
+            end
+            L3 --> Side
+        end
+    end
+
+    L1 --> Done([Done])

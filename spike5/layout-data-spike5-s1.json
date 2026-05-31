@@ -1,0 +1,203 @@
+{
+  "_notes": "Numeric layout data after Suggestion 1 (sortNodesByHierarchy port). Coordinates are SVG user-space (via getCTM, CSS pan/zoom excluded). Capture method differs from layout-data.json baseline, so absolute numbers may differ; what matters is the per-renderer relative ordering (which cluster is above/left of which).",
+  "fixture.mmd": {
+    "mermaid": {
+      "subgraphs": [
+        { "id": "Payment_System", "cx": 259.45, "cy": 892.47, "w": 479.49, "h": 437.56 },
+        { "id": "Authentication", "cx": 183.53, "cy": 1355.73, "w": 351.06, "h": 388.95 }
+      ],
+      "nodes": [
+        { "id": "Q", "cx": 254.50, "cy": 715.53 },
+        { "id": "R", "cx": 315.72, "cy": 869.80 },
+        { "id": "S", "cx": 401.12, "cy": 1056.08 },
+        { "id": "T", "cx": 254.59, "cy": 1056.08 },
+        { "id": "M", "cx": 254.59, "cy": 1203.09 },
+        { "id": "N", "cx": 254.59, "cy": 1332.87 },
+        { "id": "O", "cx": 114.83, "cy": 1494.84 },
+        { "id": "P", "cx": 274.96, "cy": 1494.84 },
+        { "id": "A", "cx": 593.49, "cy": 24.83 },
+        { "id": "B", "cx": 593.49, "cy": 108.50 },
+        { "id": "C", "cx": 593.49, "cy": 250.00 },
+        { "id": "D", "cx": 695.53, "cy": 424.84 },
+        { "id": "E", "cx": 491.46, "cy": 424.84 },
+        { "id": "F", "cx": 687.11, "cy": 523.20 },
+        { "id": "G", "cx": 491.46, "cy": 523.20 },
+        { "id": "H", "cx": 593.49, "cy": 606.86 },
+        { "id": "I", "cx": 593.49, "cy": 715.53 },
+        { "id": "J", "cx": 593.49, "cy": 869.80 },
+        { "id": "K", "cx": 593.49, "cy": 1056.08 },
+        { "id": "L", "cx": 509.49, "cy": 1203.09 }
+      ]
+    },
+    "ours": {
+      "subgraphs": [
+        { "id": "Authentication", "cx": 213, "cy": 1237.5, "w": 380, "h": 335 },
+        { "id": "Payment_System", "cx": 404.75, "cy": 826.5, "w": 396.5, "h": 367 }
+      ],
+      "nodes": [
+        { "id": "A", "cx": 740, "cy": 33 },
+        { "id": "B", "cx": 740, "cy": 128 },
+        { "id": "C", "cx": 740, "cy": 238 },
+        { "id": "D", "cx": 840, "cy": 358 },
+        { "id": "E", "cx": 640, "cy": 358 },
+        { "id": "F", "cx": 840, "cy": 468 },
+        { "id": "G", "cx": 640, "cy": 468 },
+        { "id": "H", "cx": 740, "cy": 573 },
+        { "id": "I", "cx": 740, "cy": 698 },
+        { "id": "J", "cx": 740, "cy": 829 },
+        { "id": "K", "cx": 740, "cy": 965 },
+        { "id": "L", "cx": 630, "cy": 1120 },
+        { "id": "M", "cx": 303, "cy": 1120 },
+        { "id": "N", "cx": 303, "cy": 1235 },
+        { "id": "O", "cx": 118, "cy": 1355 },
+        { "id": "P", "cx": 313, "cy": 1355 },
+        { "id": "Q", "cx": 310.5, "cy": 698 },
+        { "id": "R", "cx": 398, "cy": 829 },
+        { "id": "S", "cx": 513, "cy": 965 },
+        { "id": "T", "cx": 303, "cy": 965 }
+      ]
+    },
+    "invariants": {
+      "Payment_System_above_Authentication": {
+        "mermaid": "892<1355 ✓",
+        "ours": "826.5<1237.5 ✓",
+        "verdict": "PARITY MAINTAINED"
+      }
+    }
+  },
+  "fixture_crosscluster.mmd": {
+    "mermaid": {
+      "subgraphs": [
+        { "id": "External",  "cx": 1858.81, "cy": 431.08,  "w": 494.77,  "h": 846.16 },
+        { "id": "DataLayer", "cx": 1173.87, "cy": 981.89,  "w": 2270.96, "h": 118.12 },
+        { "id": "Services",  "cx": 799.72,  "cy": 761.16,  "w": 1583.43, "h": 186.00 },
+        { "id": "Frontend",  "cx": 559.54,  "cy": 367.41,  "w": 616.14,  "h": 464.16 }
+      ]
+    },
+    "ours": {
+      "subgraphs": [
+        { "id": "Frontend",  "cx": 702,    "cy": 318,  "w": 662,  "h": 430 },
+        { "id": "Services",  "cx": 704.25, "cy": 673,  "w": 836.5, "h": 180 },
+        { "id": "DataLayer", "cx": 734.5,  "cy": 868,  "w": 817,  "h": 110 },
+        { "id": "External",  "cx": 611,    "cy": 1018, "w": 1176, "h": 90 }
+      ]
+    },
+    "invariants": {
+      "External_side_by_side_with_Frontend_at_top": {
+        "mermaid": "External cy=431, Frontend cy=367 — both at top half ✓",
+        "ours":    "External cy=1018 (bottom), Frontend cy=318 (top) — vertical chain ✗",
+        "verdict": "STRUCTURAL DIVERGENCE PERSISTS (matches pre-Spike-5 baseline)"
+      }
+    }
+  },
+  "fixture_crosscluster_acyclic.mmd": {
+    "mermaid": {
+      "subgraphs": [
+        { "id": "External",  "cx": 774.51,  "cy": 1070.44, "w": 1431.72, "h": 83.67 },
+        { "id": "DataLayer", "cx": 1016.58, "cy": 900.88,  "w": 1147.04, "h": 118.12 },
+        { "id": "Services",  "cx": 840.32,  "cy": 689.49,  "w": 1518.16, "h": 167.33 },
+        { "id": "Frontend",  "cx": 722.20,  "cy": 314.41,  "w": 703.77,  "h": 445.50 }
+      ],
+      "nodes": [
+        { "id": "AuthCheck", "cx": 726.59, "cy": 244.24 },
+        { "id": "RateLimit", "cx": 606.09, "cy": 373.64 },
+        { "id": "Cache",     "cx": 606.09, "cy": 476.31 }
+      ]
+    },
+    "ours": {
+      "subgraphs": [
+        { "id": "Frontend",  "cx": 662.25, "cy": 318,  "w": 292.5,  "h": 430 },
+        { "id": "Services",  "cx": 808,    "cy": 673,  "w": 574,    "h": 180 },
+        { "id": "DataLayer", "cx": 741.75, "cy": 868,  "w": 831.5,  "h": 110 },
+        { "id": "External",  "cx": 585.25, "cy": 1018, "w": 1124.5, "h": 90 }
+      ],
+      "nodes": [
+        { "id": "AuthCheck", "cx": 606,   "cy": 263 },
+        { "id": "RateLimit", "cx": 708.5, "cy": 378 },
+        { "id": "Cache",     "cx": 708.5, "cy": 483 }
+      ]
+    },
+    "invariants": {
+      "RateLimit_left_of_AuthCheck": {
+        "mermaid": "RateLimit cx=606.09 LEFT of AuthCheck cx=726.59 ✓",
+        "ours":    "RateLimit cx=708.5 RIGHT of AuthCheck cx=606 ✗",
+        "verdict": "AUTHCHECK BRANCH MIRROR PERSISTS (matches pre-Spike-5 baseline)"
+      }
+    }
+  },
+  "fixture_nested.mmd": {
+    "mermaid": {
+      "subgraphs": [
+        { "id": "Platform_Top",      "cx": 546.94, "cy": 828.82,  "w": 1077.89, "h": 1474.31 },
+        { "id": "Services_L2",       "cx": 546.94, "cy": 649.44,  "w": 1037.89, "h": 898.23 },
+        { "id": "Storage_L2",        "cx": 431.07, "cy": 1302.93, "w": 722.20,  "h": 308.75 },
+        { "id": "Auth_L3",           "cx": 293.25, "cy": 760.00,  "w": 490.50,  "h": 627.10 },
+        { "id": "Payments_L3",       "cx": 802.19, "cy": 760.00,  "w": 487.40,  "h": 627.10 },
+        { "id": "TokenInner_L4",     "cx": 174.83, "cy": 801.84,  "w": 213.67,  "h": 493.44 },
+        { "id": "SessionInner_L4",   "cx": 415.95, "cy": 721.62,  "w": 205.08,  "h": 332.99 },
+        { "id": "CardProc_L4",       "cx": 918.48, "cy": 801.84,  "w": 214.82,  "h": 493.44 },
+        { "id": "Refund_L4",         "cx": 684.78, "cy": 721.62,  "w": 212.57,  "h": 332.99 },
+        { "id": "PrimaryDB_L3",      "cx": 330.57, "cy": 1302.93, "w": 481.21,  "h": 258.75 },
+        { "id": "CacheLayer_L3",     "cx": 689.67, "cy": 1302.93, "w": 164.98,  "h": 258.75 }
+      ]
+    },
+    "ours": {
+      "subgraphs": [
+        { "id": "Platform_Top",      "cx": 570.5,  "cy": 725.5,  "w": 1095, "h": 1245 },
+        { "id": "TokenInner_L4",     "cx": 178,    "cy": 683,    "w": 190,  "h": 360 },
+        { "id": "SessionInner_L4",   "cx": 433,    "cy": 615.5,  "w": 190,  "h": 225 },
+        { "id": "Auth_L3",           "cx": 305.5,  "cy": 628,    "w": 485,  "h": 510 },
+        { "id": "CardProc_L4",       "cx": 963,    "cy": 675.5,  "w": 190,  "h": 375 },
+        { "id": "Refund_L4",         "cx": 718,    "cy": 613,    "w": 200,  "h": 220 },
+        { "id": "Payments_L3",       "cx": 838,    "cy": 628,    "w": 480,  "h": 510 },
+        { "id": "Services_L2",       "cx": 570.5,  "cy": 560.5,  "w": 1055, "h": 685 },
+        { "id": "PrimaryDB_L3",      "cx": 193,    "cy": 1098,   "w": 180,  "h": 220 },
+        { "id": "CacheLayer_L3",     "cx": 710.5,  "cy": 1098,   "w": 180,  "h": 220 },
+        { "id": "Storage_L2",        "cx": 451.75, "cy": 1093,   "w": 737.5, "h": 270 }
+      ]
+    },
+    "invariants": {
+      "Services_above_Storage":     { "mermaid": "649<1302 ✓", "ours": "560<1093 ✓", "verdict": "✓" },
+      "Auth_left_of_Payments":      { "mermaid": "293<802 ✓",  "ours": "305<838 ✓",  "verdict": "✓" },
+      "Token_left_of_Session":      { "mermaid": "174<415 ✓",  "ours": "178<433 ✓",  "verdict": "✓" },
+      "Refund_left_of_Card":        { "mermaid": "684<918 ✓",  "ours": "718<963 ✓",  "verdict": "✓" },
+      "PrimaryDB_left_of_Cache":    { "mermaid": "330<689 ✓",  "ours": "193<710 ✓",  "verdict": "✓" },
+      "_summary": "ALL 5 NESTED-FIXTURE PARITY INVARIANTS MAINTAINED"
+    }
+  },
+  "fixture200.mmd": {
+    "_note": "Nodes omitted (191 too many). Top-level cluster cx span quantifies horizontal sprawl.",
+    "mermaid": {
+      "topLevelCxRange": { "min": 190, "max": 2406, "span": 2216, "leftmost": "Shipping", "rightmost": "Analytics" },
+      "viewBox": "-8 -8 4220.7 5920.7",
+      "nodeCount": 191,
+      "topLevelOrder": ["Shipping(190)", "Web(420)", "Mobile(767)", "Payments(1103)", "Orders(1475)", "Inventory(1842)", "Notifications(2151)", "Analytics(2406)"]
+    },
+    "ours": {
+      "topLevelCxRange": { "min": 355, "max": 6104, "span": 5749, "leftmost": "Analytics", "rightmost": "Web" },
+      "nodeCount": 191,
+      "topLevelOrder": ["Analytics(355)", "Notifications(1085)", "Shipping(1813)", "Inventory(2689)", "Payments(3618)", "Orders(4488)", "Mobile(5340)", "Web(6104)"]
+    },
+    "invariants": {
+      "horizontal_sprawl": {
+        "mermaid_span": 2216,
+        "ours_span":    5749,
+        "ratio":        "ours 2.6x wider than Mermaid",
+        "verdict":      "CATASTROPHIC SPRAWL PERSISTS (matches pre-Spike-5 baseline characterisation)"
+      },
+      "cluster_order": {
+        "mermaid": "Shipping, Web, Mobile, Payments, Orders, Inventory, Notifications, Analytics (non-monotone with declaration)",
+        "ours":    "Analytics, Notifications, Shipping, Inventory, Payments, Orders, Mobile, Web (close to declaration order)",
+        "verdict":  "Order completely different — Suggestion 1 did not fix this"
+      }
+    }
+  },
+  "_summary": {
+    "fixture.mmd": "no-op — parity preserved",
+    "fixture_crosscluster.mmd": "no-op — structural divergence persists",
+    "fixture_crosscluster_acyclic.mmd": "no-op — AuthCheck branch mirror persists",
+    "fixture_nested.mmd": "no-op — all 5 invariants maintained",
+    "fixture200.mmd": "no-op — catastrophic sprawl persists (~2.6x wider than Mermaid)",
+    "net_verdict": "Suggestion 1 (sortNodesByHierarchy node-insertion order) is effectively a NO-OP for all 5 fixtures. It did NOT flip any back-edge picks visible in cluster placement or branch mirrors, and did NOT regress any fixture already at parity. This confirms the §8.10 sub-option-2 hypothesis is dead — node insertion order alone is not sufficient to change dagre's structural choices for these graphs. The two divergent fixtures (crosscluster, crosscluster_acyclic) and the catastrophic one (fixture200) all require the deeper structural port to fix."
+  }
+}

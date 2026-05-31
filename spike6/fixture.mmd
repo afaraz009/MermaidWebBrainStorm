@@ -1,0 +1,66 @@
+
+flowchart TD
+
+    %% =========================
+    %% Main Nodes with Different Shapes
+    %% =========================
+
+    A([Start]) --> B[Process Node]
+
+    B --> C{Decision Node}
+
+    C -->|Yes| D[[Subroutine]]
+    C -->|No| E[(Database)]
+
+    D --> F>Asymmetric Node]
+    E --> G{{Hexagon Node}}
+
+    F --> H[/Input Output/]
+    G --> H
+
+    H --> I[\Manual Input\]
+
+    I --> J(((Circle Node)))
+
+    J --> K[(Storage)]
+
+    K --> L([End])
+
+    %% =========================
+    %% First Subgraph
+    %% =========================
+
+    subgraph Authentication
+        M[Login]
+        N{Valid User?}
+        O[[Generate Token]]
+        P[(User DB)]
+
+        M --> N
+        N -->|Yes| O
+        N -->|No| P
+    end
+
+    %% =========================
+    %% Second Subgraph
+    %% =========================
+
+    subgraph Payment_System
+        Q[/Enter Card Details/]
+        R{Payment Success?}
+        S([Success])
+        T([Failed])
+
+        Q --> R
+        R -->|Approved| S
+        R -->|Rejected| T
+    end
+
+    %% =========================
+    %% Connections Between Graphs
+    %% =========================
+
+    O --> Q
+    S --> L
+    T --> M
+

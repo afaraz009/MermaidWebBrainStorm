@@ -1,0 +1,24 @@
+flowchart LR
+
+    %% =========================
+    %% Left-to-right with a cross-cluster cycle: A.Worker → B.Handler and
+    %% B.Worker → A.Handler form a 2-cluster loop. Exercises cycle-breaking
+    %% under LR rankdir plus cluster-anchored cross edges in both directions.
+    %% =========================
+
+    Client([Client]) --> A1
+
+    subgraph A [Service A]
+        direction LR
+        A1[Handler] --> A2[Worker]
+    end
+
+    subgraph B [Service B]
+        direction LR
+        B1[Handler] --> B2[Worker]
+    end
+
+    A2 --> B1
+    B2 -.->|retry| A1
+
+    B2 --> Resp([Response])

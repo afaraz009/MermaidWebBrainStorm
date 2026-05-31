@@ -1,0 +1,34 @@
+flowchart LR
+
+    %% =========================
+    %% Left-to-right, 3-level nesting with a cluster→cluster edge.
+    %% System ⊃ {Frontend ⊃ UI, Backend}. Exercises: LR rankdir,
+    %% multi-level cluster bboxes, and a Frontend→Backend cluster-anchored
+    %% edge inside a parent cluster.
+    %% =========================
+
+    In([Input]) --> System
+
+    subgraph System [System]
+        direction LR
+
+        subgraph Frontend [Frontend]
+            direction LR
+            subgraph UI [UI Layer]
+                direction LR
+                Button[Button]
+                Form[/Form/]
+                Button --> Form
+            end
+            Router{Router} --> UI
+        end
+
+        subgraph Backend [Backend]
+            direction LR
+            API[API] --> DB[(Database)]
+        end
+
+        Frontend --> Backend
+    end
+
+    System --> Out([Output])

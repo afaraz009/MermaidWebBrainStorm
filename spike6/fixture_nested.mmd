@@ -1,0 +1,109 @@
+flowchart TD
+
+    %% =========================
+    %% Deep-nesting fixture — 4 levels of subgraph nesting
+    %% Goal: stress-test our flat-graph dagre layout against Mermaid's
+    %% per-subgraph extractor when subgraphs are nested 3-4 deep.
+    %% If our layout produces visibly stretched or misordered subgraphs
+    %% on this fixture, we know the flat approach has hit its ceiling.
+    %% =========================
+
+    Entry([API Entry]) --> PlatformIngress
+
+    subgraph Platform_Top [Platform]
+        direction TB
+
+        PlatformIngress[Ingress Gateway]
+        PlatformExit[Egress]
+
+        subgraph Services_L2 [Services Layer]
+            direction TB
+
+            ServiceRouter{Service Router}
+
+            subgraph Auth_L3 [Auth Subsystem]
+                direction TB
+
+                AuthEntry[Auth Entry]
+
+                subgraph TokenInner_L4 [Token Internals]
+                    direction TB
+                    TokenGen[[Generate Token]]
+                    TokenSign[[Sign Token]]
+                    TokenStore[(Token Store)]
+                    TokenGen --> TokenSign
+                    TokenSign --> TokenStore
+                end
+
+                subgraph SessionInner_L4 [Session Internals]
+                    direction TB
+                    SessionCreate[[Create Session]]
+                    SessionCache[(Session Cache)]
+                    SessionCreate --> SessionCache
+                end
+
+                AuthEntry --> TokenGen
+                AuthEntry --> SessionCreate
+            end
+
+            subgraph Payments_L3 [Payment Subsystem]
+                direction TB
+
+                PaymentEntry[Payment Entry]
+
+                subgraph CardProc_L4 [Card Processor]
+                    direction TB
+                    CardValidate{Validate Card}
+                    CardCharge[[Charge Card]]
+                    CardLog[(Charge Log)]
+                    CardValidate -->|ok| CardCharge
+                    CardCharge --> CardLog
+                end
+
+                subgraph Refund_L4 [Refund Processor]
+                    direction TB
+                    RefundQueue[/Refund Queue/]
+                    RefundExec[[Execute Refund]]
+                    RefundQueue --> RefundExec
+                end
+
+                PaymentEntry --> CardValidate
+                PaymentEntry --> RefundQueue
+            end
+
+            ServiceRouter -->|auth| AuthEntry
+            ServiceRouter -->|payment| PaymentEntry
+        end
+
+        subgraph Storage_L2 [Storage Layer]
+            direction TB
+
+            subgraph PrimaryDB_L3 [Primary DB]
+                direction TB
+                PrimaryWrite[(Primary Writes)]
+                PrimaryRead[(Primary Reads)]
+                PrimaryWrite --> PrimaryRead
+            end
+
+            subgraph CacheLayer_L3 [Cache Layer]
+                direction TB
+                CacheHot[(Hot Cache)]
+                CacheCold[(Cold Cache)]
+                CacheHot -.->|evict| CacheCold
+            end
+        end
+
+        PlatformIngress --> ServiceRouter
+        TokenStore --> PrimaryWrite
+        CardLog --> PrimaryWrite
+        SessionCache --> CacheHot
+        PrimaryRead --> PlatformExit
+    end
+
+    PlatformExit --> Done([Done])
+
+    %% Cross-cluster edges that span multiple nesting levels
+    %% — these are exactly what `adjustClustersAndEdges` would
+    %% rewrite in Mermaid's pipeline.
+    RefundExec -.->|audit| TokenStore
+    SessionCache -.->|sync| CardLog

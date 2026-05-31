@@ -1,0 +1,45 @@
+flowchart TD
+
+    %% =========================
+    %% Cyclic-nested fixture 2 — Cross-level back-edge: a deeply nested
+    %% leaf cycles back to an ancestor's sibling two levels up. Tests how
+    %% our renderer handles cycles whose endpoints aren't siblings — one
+    %% endpoint is at depth 3, the other at depth 1.
+    %% =========================
+
+    Ingress[/Request/] --> API_Layer
+
+    subgraph API_Layer [API Layer]
+        direction TB
+        API_Router{Router}
+
+        subgraph Service_Tier [Service Tier]
+            direction TB
+            Service_Handler[Handler]
+
+            subgraph Cache_Tier [Cache Tier]
+                direction TB
+                Cache_Lookup{Cache Hit?}
+                Cache_Store[(Cache Store)]
+                Cache_Lookup -->|miss| Cache_Store
+            end
+
+            Service_Handler --> Cache_Lookup
+        end
+
+        API_Router --> Service_Handler
+    end
+
+    subgraph Telemetry [Telemetry]
+        direction TB
+        Telemetry_Sink[(Metrics Sink)]
+        Telemetry_Alert[/Alert/]
+        Telemetry_Sink --> Telemetry_Alert
+    end
+
+    API_Layer --> Egress[/Response/]
+
+    %% Cross-level back-edges: leaf-at-depth-3 → cluster-sibling at depth-1
+    Cache_Store -.->|invalidate| API_Router
+    Telemetry_Alert -.->|throttle| Cache_Lookup
+    Cache_Store --> Telemetry_Sink

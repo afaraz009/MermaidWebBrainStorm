@@ -1,0 +1,20 @@
+flowchart RL
+
+    %% =========================
+    %% Right-to-left flow. A linear pipeline inside a cluster, fed from the
+    %% right and draining to the left. Exercises RL rankdir + a cluster with
+    %% both an incoming and outgoing cluster-anchored edge.
+    %% =========================
+
+    Source([Source]) --> Proc
+
+    subgraph Proc [Processing]
+        direction RL
+        A[Ingest] --> B[Transform] --> C[Validate]
+    end
+
+    Proc --> Sink([Sink])
+
+    %% A second branch so RL ordering of siblings is observable.
+    Source --> Audit[/Audit Log/]
+    Audit --> Sink
