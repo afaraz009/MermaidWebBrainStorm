@@ -63,6 +63,16 @@ interface SubResult {
   contentCenterY: number;
   leafPos: Map<string, LeafBox>;
   edgePoints: Map<string, { x: number; y: number }[]>;
+  // Per-edge dagre label-dummy coord (`g.edge(...).x/y`) in this level's LOCAL
+  // frame, bubbled up via the SAME additive translation as edgePoints. At the
+  // root it becomes IREdge.labelPos — where the renderer anchors the edge label
+  // (snapped onto the clipped path). See HANDOFF-4.
+  edgeLabelPos: Map<string, { x: number; y: number }>;
+  // Per-cluster compound-box rect (centre x/y + size) in this level's LOCAL
+  // frame, recorded straight from dagre's `g.node(clusterId)`. Bubbles up via the
+  // same additive translation as leafPos. At the root it becomes ir.clusterRects
+  // (the drawn rect each consumer paints) — see HANDOFF-4.
+  clusterRects: Map<string, LeafBox>;
 }
 
 export function layoutRecursive(ir: IR, external: Set<string>): IR {
@@ -348,6 +358,8 @@ export function layoutRecursive(ir: IR, external: Set<string>): IR {
     // correct anchor (the per-side margins fall out equal on both sides).
     const leafPos = new Map<string, LeafBox>();
     const edgePoints = new Map<string, { x: number; y: number }[]>();
+    const edgeLabelPos = new Map<string, { x: number; y: number }>();
+    const clusterRects = new Map<string, LeafBox>();
     for (const id of ordered) {
       const gn = g.node(id);
       if (!gn) continue;
@@ -361,9 +373,27 @@ export function layoutRecursive(ir: IR, external: Set<string>): IR {
         for (const [eid, pts] of sub.edgePoints) {
           edgePoints.set(eid, pts.map(p => ({ x: p.x + tx, y: p.y + ty })));
         }
+        for (const [eid, lp] of sub.edgeLabelPos) {
+          edgeLabelPos.set(eid, { x: lp.x + tx, y: lp.y + ty });
+        }
+        // Nested EXTERNAL clusters inside this extracted child: bubble their
+        // recorded rects up by the same translation. The extracted child itself
+        // is NOT recorded — extracted/encapsulated clusters keep the proven
+        // clusterMargins drawn-rect path (HANDOFF-1/2); only EXTERNAL clusters,
+        // whose compound box dagre widens with edge routing, need the recorded
+        // rect (HANDOFF-4). So fully-encapsulated fixtures get an empty
+        // clusterRects map and are byte-identical to before.
+        for (const [cid, r] of sub.clusterRects) {
+          clusterRects.set(cid, { x: r.x + tx, y: r.y + ty, width: r.width, height: r.height });
+        }
       } else if (sgById.has(id)) {
-        continue; // external/non-extracted cluster compound — its leaves are
-                  // separate g nodes, recorded individually below/above.
+        // EXTERNAL (flat) cluster compound — a real g node at this level. Record
+        // its dagre compound box as the drawn rect: dagre reserved edge-routing
+        // space inside it (cross-boundary edges fanning in), so the leaf-bbox +
+        // symmetric-margin model under-sizes it. Its leaves are separate g nodes
+        // recorded via the else branch. (HANDOFF-4)
+        clusterRects.set(id, { x: gn.x, y: gn.y, width: gn.width, height: gn.height });
+        continue;
       } else {
         leafPos.set(id, { x: gn.x, y: gn.y, width: gn.width, height: gn.height });
       }
@@ -373,6 +403,10 @@ export function layoutRecursive(ir: IR, external: Set<string>): IR {
       const ge = g.edge(repFrom, repTo, e.id);
       if (ge && ge.points) {
         edgePoints.set(e.id, (ge.points as { x: number; y: number }[]).map(p => ({ x: p.x, y: p.y })));
+      }
+      // dagre's label-dummy coord (the rank it reserved for this edge's label).
+      if (ge && typeof ge.x === 'number' && typeof ge.y === 'number') {
+        edgeLabelPos.set(e.id, { x: ge.x, y: ge.y });
       }
     }
 
@@ -533,6 +567,8 @@ export function layoutRecursive(ir: IR, external: Set<string>): IR {
       contentCenterY: (minY + maxY) / 2,
       leafPos,
       edgePoints,
+      edgeLabelPos,
+      clusterRects,
     };
   }
 
@@ -542,6 +578,17 @@ export function layoutRecursive(ir: IR, external: Set<string>): IR {
   // shared computeClusterBboxes — so every consumer paints the recursive
   // cluster's drawn rect at the compound-box size, equal to the placeholder.
   ir.clusterMargins = clusterMargins;
+
+  // Recorded dagre compound-box rects (centre+size, global frame) → drawn-rect
+  // corner form. computeClusterBboxes prefers these over the margin model so a
+  // cluster widened by edge-routing dummies is painted at its true dagre box
+  // (HANDOFF-4). Clusters without a recorded rect (e.g. a transparent non-
+  // extracted leaf-only cluster) fall back to the margin/leaf derivation.
+  const clusterRectsCorner = new Map<string, { x: number; y: number; w: number; h: number }>();
+  for (const [cid, r] of root.clusterRects) {
+    clusterRectsCorner.set(cid, { x: r.x - r.width / 2, y: r.y - r.height / 2, w: r.width, h: r.height });
+  }
+  ir.clusterRects = clusterRectsCorner;
 
   // Write global leaf positions back to the IR.
   for (const n of ir.nodes) {
@@ -566,6 +613,9 @@ export function layoutRecursive(ir: IR, external: Set<string>): IR {
     const pts = clipEdgeWaypoints(e, rawPts, clusterBboxes, nodesById);
     e.points = pts;
     e.originalPoints = pts.map(p => ({ ...p }));
+    // dagre's label rank, in global coords; the renderer snaps it onto `pts`.
+    const lp = root.edgeLabelPos.get(e.id);
+    if (lp) e.labelPos = { x: lp.x, y: lp.y };
   }
 
   return ir;

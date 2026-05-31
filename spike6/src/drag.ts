@@ -91,6 +91,9 @@ export function attachDrag(svg: SVGSVGElement, ir: IR, mountEl: SVGElement): () 
     //                    back-edges — that's the point of this mode.
     if (astarSettings.enabled) {
       routeEdgesBatch(ir.edges, ir, DEFAULT_CONFIG, astarSettings.separation);
+      // A* replaced every edge path; the dagre label coord no longer lies on it,
+      // so drop it and let the renderer anchor labels at the new path's middle.
+      for (const e of ir.edges) delete e.labelPos;
     } else if (edgeSettings.edgeMode === 'side-aware') {
       const droppedNode = node;
       if (droppedNode) {
@@ -112,6 +115,11 @@ export function attachDrag(svg: SVGSVGElement, ir: IR, mountEl: SVGElement): () 
           if (!pts) continue;
           edge.originalPoints = pts.map(p => ({ ...p }));
           edge.points = pts.map(p => ({ ...p }));
+          // The side-aware curve replaced this edge's path (often a 2-point
+          // line); the dagre label coord is now off it, so drop it and let the
+          // renderer use the path-relative anchor — avoids the label jumping to
+          // the arrowhead (middle index of a 2-point line). See edgeLabelAnchor.
+          delete edge.labelPos;
         }
       }
     } else {

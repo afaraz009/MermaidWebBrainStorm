@@ -40,6 +40,17 @@ export function computeClusterBboxes(ir: IR): Map<string, BBox> {
     const sg = sgById.get(sgId);
     if (!sg) return null;
 
+    // Recorded dagre compound-box rect (recursive path) wins: it already encloses
+    // every descendant AND any edge-routing space dagre reserved inside the
+    // cluster, which the leaf-bbox + margin model below cannot reproduce when a
+    // cluster is widened asymmetrically by cross-boundary edges (HANDOFF-4).
+    const recorded = ir.clusterRects?.get(sgId);
+    if (recorded) {
+      const b: BBox = { x: recorded.x, y: recorded.y, w: recorded.w, h: recorded.h };
+      map.set(sgId, b);
+      return b;
+    }
+
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
 
     for (const childId of sg.children) {

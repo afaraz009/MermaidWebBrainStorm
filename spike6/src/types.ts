@@ -54,6 +54,17 @@ export interface IREdge {
   // adjustClustersAndEdges Pass 4 (mermaid.core/dagre-KV5264BT.mjs:262-268).
   fromCluster?: string;
   toCluster?: string;
+  // Dagre's label-dummy coordinate (`g.edge(...).x/y`) for this edge, in global
+  // coords, recorded by the RECURSIVE engine only. This is where dagre reserved
+  // the label rank — Mermaid's `positionEdgeLabel` anchors the label here. Our
+  // post-dagre clipping (clipEdgeWaypoints) straightens the routed path, so this
+  // raw coord can end up slightly OFF the final path; the renderer snaps it to
+  // the nearest point on the drawn path (edgeLabelAnchor). Unset on the flat
+  // legacy path and deleted when a non-layout reroute (side-aware drag / A*)
+  // rebuilds the path, so the renderer falls back to a path-relative anchor.
+  // Cleared at the top of layout() so a recursive→flat flip can't read a stale
+  // value. See HANDOFF-4.
+  labelPos?: { x: number; y: number };
 }
 
 export interface IRSubgraph {
@@ -94,4 +105,12 @@ export interface IR {
   // the top of layout() so a graph that flips recursive→flat can't read stale
   // margins. See recursive-layout.ts (clusterMargins) and HANDOFF-1.
   clusterMargins?: Map<string, { x: number; y: number }>;
+  // Per-cluster DRAWN rect (top-left corner + size) in global coords, recorded
+  // directly from dagre's compound box by recursive-layout.ts. Preferred over
+  // clusterMargins by cluster-bbox.ts when present: a cluster whose compound box
+  // is widened by edge-routing dummies (e.g. an external cluster with cross-
+  // boundary edges fanning into it) is NOT symmetric around its leaves, so the
+  // leaf-bbox + symmetric-margin model under-sizes it. The recorded rect IS
+  // Mermaid's drawn rect (both derive from the same dagre-d3-es compound box).
+  clusterRects?: Map<string, { x: number; y: number; w: number; h: number }>;
 }

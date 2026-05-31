@@ -48,11 +48,28 @@ export function layout(ir: IR): IR {
   // from a previous run so the flat path (and a graph that just flipped
   // recursive→flat) never reads stale margins into computeClusterBboxes.
   ir.clusterMargins = undefined;
+  ir.clusterRects = undefined;
+  // Label-dummy coords are a recursive-path artefact (only the recursive engine
+  // records them). Clear any from a previous run so the flat path — and a graph
+  // that just flipped recursive→flat — never anchors a label to a stale coord.
+  for (const e of ir.edges) e.labelPos = undefined;
 
   const external = computeExternalConnections(ir);
-  const anyEncapsulatable = ir.subgraphs.some(sg => !external.has(sg.id));
   const anyPinned = ir.nodes.some(n => n.pinned);
-  if (anyEncapsulatable && !anyPinned) {
+  // HANDOFF-4: route ANY graph with at least one subgraph through the recursive
+  // engine — including the ALL-external case (every cluster has a boundary-
+  // crossing edge, so `encapsulated` is empty). That degenerate case reduces to
+  // a single root `layoutCluster(undefined, …)`: every cluster is added as a
+  // flat dagre compound and sized to Mermaid's compound box (the same external-
+  // cluster handling cyc3/cyc4 already exercise), fixing the flat-path parity
+  // gap (cluster rects, internal spacing, edge-label-vs-title). Mermaid lays an
+  // all-external graph out with its non-recursive `recursiveRender` root call —
+  // one flat dagre pass with every cluster a compound — which is exactly what
+  // this root level now does. Only PINNED graphs and graphs with NO subgraph
+  // stay on the legacy flat body (pinning is the coarse any-pin → flat; a
+  // graph with no cluster has nothing to encapsulate and dagre lays it out the
+  // same either way).
+  if (ir.subgraphs.length > 0 && !anyPinned) {
     return layoutRecursive(ir, external);
   }
 

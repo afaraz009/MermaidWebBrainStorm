@@ -12,9 +12,10 @@ clusters) is shipped and verified. Full decision trail: `../RECURSIVE_LAYOUT_LOG
 | 1 | [HANDOFF-1-cluster-size-parity.md](HANDOFF-1-cluster-size-parity.md) | ✅ DONE (2026-05-31). Recursive clusters now sized to Mermaid's dagre compound box (rank Δ=ranksep, cross Δ=70/40); drawn rect decoupled via `ir.clusterMargins`; sole-leaf-child non-extraction replicated. See `../RECURSIVE_LAYOUT_LOG.md` "HANDOFF-1 RESOLVED". | Medium |
 | 2 | [HANDOFF-2-mixed-graph-encapsulation.md](HANDOFF-2-mixed-graph-encapsulation.md) | ✅ DONE (2026-05-31). Mixed graphs (cyc3/cyc4) now partially encapsulated via the recursive engine: external clusters laid flat in-place, extracted sub-levels use Mermaid's `copy` node order (fixes the ProdA↔ProdB cycle-break). All-external + fully-encapsulated fixtures byte-identical; locked checkpoints hold. NO reanchor pass needed. See `../RECURSIVE_LAYOUT_LOG.md` "HANDOFF-2 RESOLVED". | High (locked fixtures) |
 | 3 | [HANDOFF-3-reserve-fallback-flip.md](HANDOFF-3-reserve-fallback-flip.md) | `fixture_reserve_fallback` L1/L2 sibling order flipped vs Mermaid (flat-path quirk). | Medium |
+| 4 | [HANDOFF-4-flat-path-parity.md](HANDOFF-4-flat-path-parity.md) | Flat path (all-external graphs) diverges from Mermaid: cluster-entering edge labels overlap the cluster TITLE, internal spacing tighter, cluster rects smaller. Route all-external graphs through the recursive engine + re-baseline every flat fixture against Mermaid. **Un-locks the flat fixtures by design.** Subsumes **3**. | HIGHEST (un-locks flat path) |
 
-Recommended order: **1** (best visual-parity payoff, self-contained) → **3**
-(small, isolated) → **2** (hardest, touches locked fixtures).
+Recommended order: **1** ✅ (best visual-parity payoff, self-contained) → **2** ✅
+(mixed-graph encapsulation) → **4** (hardest; replaces the flat path).
 
 ---
 

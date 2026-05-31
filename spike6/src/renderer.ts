@@ -626,6 +626,80 @@ function edgePathString(ep: EdgePoints): string {
   return ep.mode === 'curve' ? edgeCurvePath(ep.pts) : edgeStraightPath(ep.pts);
 }
 
+// Arc-length midpoint of an edge path, replicating Mermaid v11's
+// `utils.calcLabelPosition` → `traverseEdge` (chunk-5PVQY5BW.mjs:166-220): the
+// point reached after walking HALF the path's total arc length, linearly
+// interpolated within the segment where the halfway mark falls. This is NOT the
+// middle-index waypoint (which lands on a cluster border for a crossing edge —
+// HANDOFF-4 issue A). Mermaid uses THIS only when the path was clipped at a
+// cluster boundary (`updatedPath`); for a normal edge it keeps dagre's label
+// coord (see `edgeLabelAnchor`). Operates on the SAME clipped waypoints the path
+// `d` is drawn from, so the label tracks the visible curve. (HANDOFF-4)
+function calcLabelPosition(pts: { x: number; y: number }[]): { x: number; y: number } {
+  if (pts.length === 0) return { x: 0, y: 0 };
+  if (pts.length === 1) return pts[0];
+  const dist = (a: { x: number; y: number }, b: { x: number; y: number }) =>
+    Math.sqrt((b.x - a.x) ** 2 + (b.y - a.y) ** 2);
+  let total = 0;
+  for (let i = 1; i < pts.length; i++) total += dist(pts[i - 1], pts[i]);
+  let remaining = total / 2;
+  for (let i = 1; i < pts.length; i++) {
+    const seg = dist(pts[i - 1], pts[i]);
+    if (seg === 0) continue;
+    if (seg < remaining) {
+      remaining -= seg;
+      continue;
+    }
+    const r = remaining / seg;
+    if (r <= 0) return pts[i - 1];
+    if (r >= 1) return { x: pts[i].x, y: pts[i].y };
+    return {
+      x: (1 - r) * pts[i - 1].x + r * pts[i].x,
+      y: (1 - r) * pts[i - 1].y + r * pts[i].y,
+    };
+  }
+  return pts[pts.length - 1];
+}
+
+// The waypoint nearest `p` (Euclidean). dagre's label dummy is always a vertex
+// of the routed path; after clipping it survives as a vertex (with a possibly
+// straightened coord), so snapping `p` to the nearest vertex recovers it.
+function nearestVertex(
+  p: { x: number; y: number },
+  pts: { x: number; y: number }[],
+): { x: number; y: number } {
+  let best = pts[0], bestD = Infinity;
+  for (const q of pts) {
+    const d = (p.x - q.x) ** 2 + (p.y - q.y) ** 2;
+    if (d < bestD) { bestD = d; best = q; }
+  }
+  return best;
+}
+
+// Edge-label anchor — replicates Mermaid's `positionEdgeLabel`
+// (chunk-ENJZ2VHE.mjs:315), which anchors a label at dagre's label-dummy coord.
+// dagre reserves a rank for the label and threads it through the routed path as
+// a vertex; we record that coord in `e.labelPos`. Its rank (y for TB) is exact,
+// but dagre offsets its cross-coord to the SIDE of the path, and our post-dagre
+// clipping then straightens the path — so the raw coord sits beside the drawn
+// path. Snapping it to the nearest path vertex restores Mermaid's position:
+//   • cyclic_nested_1 `retry`: raw (271.9,706.5) → vertex (240.2,706.5) =
+//     Mermaid (240.2,706.7).
+//   • fixture_nested `auth`: raw (315.3,445.8) → vertex (285.2,445.8) = Mermaid
+//     exactly — the waypoint just ABOVE the cluster border, clear of the "Auth
+//     Subsystem" title that the naive middle-index waypoint lands on (issue A).
+// When labelPos is absent — flat legacy path (pinned / no-subgraph), or a
+// non-layout reroute (side-aware drag / A*) that deleted the now-stale coord —
+// fall back to the arc-length midpoint = geometric middle of the drawn path. NOT
+// the middle-INDEX waypoint: a side-aware rebuild is a 4-point curve
+// [anchor, stub, peerStub, peerAnchor], whose middle index (pts[2]=peerStub)
+// sits at the arrowhead end — the drag-jump bug. The arc-length midpoint is
+// jump-free for any path shape.
+function edgeLabelAnchor(e: IREdge, pts: { x: number; y: number }[]): { x: number; y: number } {
+  if (e.labelPos && pts.length >= 1) return nearestVertex(e.labelPos, pts);
+  return calcLabelPosition(pts);
+}
+
 export function renderFull(ir: IR, mountEl: SVGElement, interactive = false, originalIR?: IR): void {
   mountEl.innerHTML = '';
 
@@ -782,7 +856,10 @@ export function renderFull(ir: IR, mountEl: SVGElement, interactive = false, ori
     g.appendChild(arrowLine);
 
     if (e.label) {
-      const mid = pts[Math.floor(pts.length / 2)];
+      // Dual rule: normal edge → dagre's label coord; cluster-crossing edge →
+      // arc-length midpoint (clear of the cluster border/title). See
+      // edgeLabelAnchor / HANDOFF-4 issue A.
+      const mid = edgeLabelAnchor(e, pts);
       const lines = wrapEdgeLabel(e.label);
       const { w: labelW, h: labelH } = edgeLabelSize(e.label);
       const bg = el('rect');
@@ -1043,7 +1120,7 @@ export function restoreEdgeStyle(
 
     const pts = meta.displayPoints.get(key);
     if (pts && pts.length > 0) {
-      const mid = pts[Math.floor(pts.length / 2)];
+      const mid = edgeLabelAnchor(edge, pts);
       const { w: labelW, h: labelH } = edgeLabelSize(edge.label ?? '');
       const bgEl = mountEl.querySelector(`[data-edge-key="${key}"] .edge-label-bg`) as SVGElement | null;
       if (bgEl) {
@@ -1110,7 +1187,11 @@ export function refreshEdgesFromLayout(mountEl: SVGElement): void {
     const arrowEl = mountEl.querySelector(`[data-edge-key="${key}"] .edge-arrow-line`) as SVGLineElement | null;
     if (arrowEl) { arrowEl.removeAttribute('display'); updateArrowLine(arrowEl, pts); }
 
-    const mid = pts[Math.floor(pts.length / 2)];
+    // Same anchor rule as initial render. After a side-aware drag the rebuilt
+    // path is a 2-point line, so edgeLabelAnchor takes the arc-length middle
+    // instead of the middle-index waypoint — which would be the arrowhead (the
+    // old drag-jump bug).
+    const mid = edgeLabelAnchor(e, pts);
     const { w: labelW, h: labelH } = edgeLabelSize(e.label ?? '');
     const bgEl = mountEl.querySelector(`[data-edge-key="${key}"] .edge-label-bg`) as SVGElement | null;
     if (bgEl) {
