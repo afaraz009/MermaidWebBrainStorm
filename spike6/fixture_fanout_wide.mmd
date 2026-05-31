@@ -1,0 +1,49 @@
+flowchart TD
+
+    %% =========================
+    %% BREAK ATTEMPT 4 — Wide fan-out (1 -> 8) then fan-in (8 -> 1) all
+    %% inside a single cluster, with a cross-cluster edge entering the
+    %% middle of the fan. Stresses cluster WIDTH / cross-margin and the
+    %% +18px container residual at scale. If the cluster box is grossly
+    %% off or leaves spill the border, the compound-box sizing has a gap.
+    %% =========================
+
+    Source([Source]) --> Fan
+
+    subgraph Fan [Fan Cluster]
+        direction TB
+        Split{Split}
+        W1[W1]
+        W2[W2]
+        W3[W3]
+        W4[W4]
+        W5[W5]
+        W6[W6]
+        W7[W7]
+        W8[W8]
+        Join[Join]
+        Split --> W1
+        Split --> W2
+        Split --> W3
+        Split --> W4
+        Split --> W5
+        Split --> W6
+        Split --> W7
+        Split --> W8
+        W1 --> Join
+        W2 --> Join
+        W3 --> Join
+        W4 --> Join
+        W5 --> Join
+        W6 --> Join
+        W7 --> Join
+        W8 --> Join
+    end
+
+    subgraph Side [Side Channel]
+        direction TB
+        S_In[Inject]
+    end
+
+    S_In -->|inject| W4
+    Fan --> Out([Out])

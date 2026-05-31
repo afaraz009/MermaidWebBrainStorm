@@ -1,0 +1,31 @@
+flowchart TD
+
+    %% =========================
+    %% BREAK ATTEMPT 2 — Self-loops at the root AND on nodes inside a
+    %% cluster, plus a self-loop on a node that also has cross-cluster
+    %% edges. Self-loops are a classic layout breaker (zero-length rank
+    %% span, label on a loop). If a self-loop NaNs the bbox or the label
+    %% lands off the loop, we have a gap.
+    %% =========================
+
+    Root([Root]) --> Engine
+    Root -->|reentry| Root
+
+    subgraph Engine [Engine]
+        direction TB
+        E_Tick{Tick}
+        E_Work[[Work]]
+        E_Tick -->|poll| E_Tick
+        E_Tick --> E_Work
+        E_Work -->|repeat| E_Work
+    end
+
+    subgraph Monitor [Monitor]
+        direction TB
+        M_Probe[Probe]
+        M_Probe -->|heartbeat| M_Probe
+    end
+
+    E_Work --> M_Probe
+    M_Probe -.->|alarm| E_Tick
+    Monitor --> Stop([Stop])

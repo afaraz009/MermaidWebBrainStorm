@@ -1,0 +1,38 @@
+flowchart TD
+
+    %% =========================
+    %% BREAK ATTEMPT 6 — A single back-edge that spans THREE nesting
+    %% levels (deepest leaf --> top-level node), combined with full
+    %% encapsulation everywhere else. Tests cycle-break + anchor when the
+    %% back-edge's endpoints live at very different depths. If the deep
+    %% endpoint forces de-encapsulation of an otherwise-clean cluster,
+    %% the extraction heuristic has a gap.
+    %% =========================
+
+    Apex([Apex]) --> L1
+
+    subgraph L1 [Level 1]
+        direction TB
+        L1_Gate[Gate]
+
+        subgraph L2 [Level 2]
+            direction TB
+            L2_Mux[Mux]
+
+            subgraph L3 [Level 3]
+                direction TB
+                L3_Deep[[Deep Worker]]
+                L3_Sink[(Deep Sink)]
+                L3_Deep --> L3_Sink
+            end
+
+            L2_Mux --> L3_Deep
+        end
+
+        L1_Gate --> L2_Mux
+    end
+
+    L1 --> Exit([Exit])
+
+    %% the deep back-edge: 3 levels up, crossing every boundary
+    L3_Sink -.->|escalate| L1_Gate
