@@ -11,6 +11,9 @@ import { attachCollapseHandlers } from './collapse.js';
 import { attachPan, getPan, getZoom, setZoom, setPan } from './pan.js';
 import { attachContextMenu } from './contextMenuWiring.js';
 import { attachConnect, hideHandles } from './connect.js';
+import { computeDepths, maxDepth } from './depth.js';
+import { attachFocus } from './focus.js';
+import { attachPath } from './path.js';
 import type { IR } from './types.js';
 
 // `ir` is the source of truth (with `sg.collapsed` flags + pinned node
@@ -20,6 +23,12 @@ import type { IR } from './types.js';
 let ir: IR;
 let currentEff: IR;
 let detachDrag: (() => void) | null = null;
+let detachFocus: (() => void) | null = null;
+let detachPath: (() => void) | null = null;
+// Per-subgraph nesting depth (root = 1), computed once from the source IR on
+// load. The depth slider reads this to decide which subgraphs to collapse.
+// Structural, so it never changes after parse (collapse only flips flags).
+let depths: Map<string, number> = new Map();
 const svg = document.getElementById('mount') as unknown as SVGSVGElement;
 
 function readFixtureName(): string {
@@ -30,6 +39,14 @@ function readFixtureName(): string {
 function reattach(): void {
   if (detachDrag) detachDrag();
   detachDrag = attachDrag(svg, currentEff, svg);
+  // Focus mode's overlay listeners + selection are closure-local, so re-attach
+  // them against the freshly rebuilt DOM. The mode itself lives in
+  // `disclosureSettings` and persists; any prior emphasis is gone with the old
+  // DOM (SPEC §2: overlays don't survive a re-render).
+  if (detachFocus) detachFocus();
+  detachFocus = attachFocus(svg, () => currentEff);
+  if (detachPath) detachPath();
+  detachPath = attachPath(svg, () => currentEff);
   // Any pending connect-handle session is invalidated by a full re-render
   // since the node DOM was rebuilt.
   hideHandles();
@@ -113,6 +130,49 @@ async function main() {
   attachPan(svg);
   attachContextMenu(svg, () => ir, rerenderWithCollapse, resetLayout, toggleAstar, fitView);
   attachConnect(svg, () => ir, rerenderWithCollapse);
+  initDepthSlider();
+}
+
+// Depth slider: drives `sg.collapsed` from each subgraph's nesting depth, then
+// re-renders through the EXISTING collapse path (`rerenderWithCollapse`). No new
+// layout or render code — it reuses the collapse machinery. Semantics (SPEC §2
+// "Depth slider"): "reveal N levels of nesting" → for every subgraph,
+// collapsed = depthOf(sg) > N. Range is 0 … maxDepth, default maxDepth:
+//   • N = maxDepth → nothing collapsed (fully expanded on load).
+//   • N = 1        → only top-level clusters open; deeper levels fold to surrogates.
+//   • N = 0        → EVERY cluster folds to a top-level surrogate, including
+//                    single-level / top-level clusters (the case min=1 couldn't reach).
+// Enabled whenever the graph has ≥1 subgraph (maxDepth ≥ 1); disabled only when
+// there are no subgraphs at all (maxDepth 0), where there is nothing to fold.
+//
+// Known limitation (SPEC §3): the slider WRITES flags but does not re-sync when
+// the user manually collapses/expands a cluster or hits Collapse All / Expand
+// All — those paths may diverge from the slider's last position. By design.
+function initDepthSlider(): void {
+  const depthEl = document.getElementById('cfgDepth') as HTMLInputElement | null;
+  const depthValEl = document.getElementById('cfgDepthVal');
+  if (!depthEl) return;
+
+  depths = computeDepths(ir);
+  const max = maxDepth(ir);
+  depthEl.min = '0';
+  depthEl.max = String(Math.max(0, max));
+  depthEl.value = String(max);
+  depthEl.disabled = max < 1;
+  if (depthValEl) depthValEl.textContent = String(max);
+
+  function applyDepth(): void {
+    const n = +depthEl!.value;
+    if (depthValEl) depthValEl.textContent = String(n);
+    for (const sg of ir.subgraphs) {
+      sg.collapsed = (depths.get(sg.id) ?? 1) > n;
+    }
+    rerenderWithCollapse();
+  }
+
+  // `input` fires continuously while dragging; `change` fires on release. Both
+  // route through applyDepth so the diagram folds live as the user drags.
+  depthEl.addEventListener('input', applyDepth);
 }
 
 function resetLayout(): void {

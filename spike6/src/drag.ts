@@ -78,16 +78,22 @@ export function attachDrag(svg: SVGSVGElement, ir: IR, mountEl: SVGElement): () 
     const droppedId = dragging.id;
     const moved = dragging.moved;
     const node = ir.nodes.find(n => n.id === droppedId);
-    if (node) node.pinned = true;
     const nodeEl = mountEl.querySelector(`[data-node-id="${droppedId}"]`) as SVGElement | null;
     if (nodeEl) nodeEl.style.cursor = 'grab';
     dragging = null;
 
     if (!moved) {
+      // A zero-distance press is a click, not a drag: do NOT pin. Pinning forces
+      // the flat layout engine on the next layout() (see types.ts `pinned`), which
+      // would silently degrade the recursive Mermaid-faithful layout when a
+      // focus/path select-click is followed by e.g. the depth slider. (SPEC §3.0)
       refreshEdgesFromLayout(mountEl);
       if (isGridOverlayShown(mountEl)) renderGridOverlay(mountEl, ir);
       return;
     }
+
+    // A real drag: pin the node at its dropped position.
+    if (node) node.pinned = true;
 
     // Snap the dropped node so its left/top edge lands on a grid line.
     // Sub-cell drag offsets are absorbed here so the post-drop routing sees a

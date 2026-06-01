@@ -1,4 +1,5 @@
 import type { IR } from './types.js';
+import { disclosureSettings } from './disclosureSettings.js';
 
 const CLICK_THRESHOLD_PX = 4;
 
@@ -23,6 +24,9 @@ export function attachCollapseHandlers(
   svg.addEventListener('click', (e: MouseEvent) => {
     // Only left-button collapses. Right-click is owned by the context menu.
     if (e.button !== 0) return;
+    // Suppressed outside the default disclosure mode: in focus/path a node or
+    // canvas click is a selection, not a collapse (SPEC §2 "Click-vs-drag").
+    if (disclosureSettings.mode !== 'default') return;
     const sgEl = (e.target as Element).closest('[data-subgraph-id]') as SVGElement | null;
     if (!sgEl) return;
     const sgId = sgEl.getAttribute('data-subgraph-id')!;
@@ -38,6 +42,8 @@ export function attachCollapseHandlers(
 
   svg.addEventListener('mousedown', (e: MouseEvent) => {
     if (e.button !== 0) { pressed = null; return; }
+    // In focus/path mode a surrogate click is a node selection, not an expand.
+    if (disclosureSettings.mode !== 'default') { pressed = null; return; }
     const surrEl = (e.target as Element).closest('[data-surrogate-for]') as SVGElement | null;
     if (!surrEl) { pressed = null; return; }
     pressed = {

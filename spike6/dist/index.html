@@ -44,25 +44,32 @@
   <div class="toolbar">
     <label for="fixture-select">Fixture:</label>
     <select id="fixture-select">
-      <option value="fixture.mmd">small</option>
-      <option value="fixture200.mmd">200-node</option>
-      <option value="fixture_shapes.mmd">shape gallery</option>
-      <option value="fixture_nested.mmd">deep nesting (4 levels)</option>
-      <option value="fixture_crosscluster.mmd">cross-cluster edge labels</option>
-      <option value="fixture_crosscluster_acyclic.mmd">cross-cluster acyclic (control)</option>
-      <option value="fixture_node_to_subgraph.mmd">node → subgraph (Spike 5 crash repro)</option>
-      <option value="fixture_cyclic_nested_1.mmd">cyclic-nested 1 (L4 two-cluster cycle)</option>
-      <option value="fixture_cyclic_nested_2.mmd">cyclic-nested 2 (cross-level back-edges)</option>
-      <option value="fixture_cyclic_nested_3.mmd">cyclic-nested 3 (two independent cycles)</option>
-      <option value="fixture_cyclic_nested_4.mmd">cyclic-nested 4 (diamond + back-edge SCC)</option>
-      <option value="fixture_reserve_fallback.mmd">fixture_reserve_fallback </option>
+      <option value="fixture.mmd">fixture</option>
+      <option value="fixture200.mmd">fixture200</option>
+      <option value="fixture_shapes.mmd">fixture_shapes</option>
+      <option value="fixture_nested.mmd">fixture_nested</option>
+      <option value="fixture_crosscluster.mmd">fixture_crosscluster</option>
+      <option value="fixture_crosscluster_acyclic.mmd">fixture_crosscluster_acyclic</option>
+      <option value="fixture_node_to_subgraph.mmd">fixture_node_to_subgraph</option>
+      <option value="fixture_cyclic_nested_1.mmd">fixture_cyclic_nested_1</option>
+      <option value="fixture_cyclic_nested_2.mmd">fixture_cyclic_nested_2</option>
+      <option value="fixture_cyclic_nested_3.mmd">fixture_cyclic_nested_3</option>
+      <option value="fixture_cyclic_nested_4.mmd">fixture_cyclic_nested_4</option>
+      <option value="fixture_reserve_fallback.mmd">fixture_reserve_fallback</option>
       <option disabled>──── direction / multi-level ────</option>
-      <option value="fixture_lr_nested.mmd">LR — 3-level nested + cluster→cluster</option>
-      <option value="fixture_rl_chain.mmd">RL — pipeline (right-to-left)</option>
-      <option value="fixture_bt_pipeline.mmd">BT — build pipeline (bottom-up)</option>
-      <option value="fixture_deep_5level.mmd">TB — 5-level deep (collapse stress)</option>
-      <option value="fixture_lr_cyclic.mmd">LR — cross-cluster cycle</option>
-      <option value="fixture_lr_subdir.mmd">LR — per-subgraph direction (KNOWN GAP)</option>
+      <option value="fixture_lr_nested.mmd">fixture_lr_nested</option>
+      <option value="fixture_rl_chain.mmd">fixture_rl_chain</option>
+      <option value="fixture_bt_pipeline.mmd">fixture_bt_pipeline</option>
+      <option value="fixture_deep_5level.mmd">fixture_deep_5level</option>
+      <option value="fixture_lr_cyclic.mmd">fixture_lr_cyclic</option>
+      <option value="fixture_lr_subdir.mmd">fixture_lr_subdir</option>
+      <option disabled>──── break attempts ────</option>
+      <option value="fixture_xcluster_parallel.mmd">fixture_xcluster_parallel</option>
+      <option value="fixture_selfloops.mmd">fixture_selfloops</option>
+      <option value="fixture_cluster_chain.mmd">fixture_cluster_chain</option>
+      <option value="fixture_fanout_wide.mmd">fixture_fanout_wide</option>
+      <option value="fixture_mixed_dir_cycle.mmd">fixture_mixed_dir_cycle</option>
+      <option value="fixture_deep_backedge.mmd">fixture_deep_backedge</option>
     </select>
     <span style="margin-left:auto;color:#666;">left: Mermaid reference &nbsp;|&nbsp; right: A* renderer (drag a node)</span>
   </div>
