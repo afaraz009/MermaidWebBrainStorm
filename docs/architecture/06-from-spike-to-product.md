@@ -8,8 +8,9 @@
 > **product scaffolding the spike never had** (Markdown workspace, backend, framework)
 > and **three disclosure modes** that are mostly **adjacency walks + opacity** on top of
 > the finished renderer — they don't need the layout engine at all. Two risks travel
-> with you into Phase 1: **performance at scale is unmeasured** and **focus/path are
-> unbuilt**. Don't reopen the renderer technology decisions — they're settled.
+> with you into Phase 1: **performance at scale is unmeasured** and the **comprehension
+> thesis is unvalidated** (all four disclosure modes are now built on the harness, but
+> not yet proven with users). Don't reopen the renderer technology decisions — settled.
 
 ---
 
@@ -25,12 +26,12 @@ is what now implements each box:
 | Layout Engine (dagre) | `layout.ts` + `recursive-layout.ts` + `layout-core.ts` | ✅ Done — Mermaid-faithful, both engines |
 | Render Model Builder (coords, curveBasis) | `cluster-bbox.ts` + `renderer.ts` curve builders | ✅ Done |
 | SVG Renderer (data-* hooks, partial update) | `renderer.ts` | ✅ Done — `__meta`, live updates |
-| Interaction: **Collapse Engine** | `effective-ir.ts` + `collapse.ts` | ✅ Prototyped |
+| Interaction: **Collapse Engine** | `effective-ir.ts` + `collapse.ts` | ✅ Built |
 | Interaction: **Drag** (Strategy 1) | `drag.ts` | ✅ Done |
 | Interaction: Pan/Zoom | `pan.ts` | ✅ Done |
-| Interaction: **Depth Engine** | — | ⬜ Not built |
-| Interaction: **Focus Engine** | — | ⬜ Not built |
-| Interaction: **Path Engine** (BFS over IR) | — | ⬜ Not built |
+| Interaction: **Depth Engine** | `depth.ts` + slider | ✅ Built (on harness) |
+| Interaction: **Focus Engine** | `focus.ts` + `disclosure-overlay.ts` | ✅ Built (on harness) |
+| Interaction: **Path Engine** (all directed routes) | `path.ts` + `disclosure-overlay.ts` | ✅ Built (on harness) |
 | Command Palette (fuzzy over IR labels) | — | ⬜ Not built |
 | Minimap (shadow render) | — | ⬜ Not built |
 | elkjs "Adaptive" layout | — | ⬜ Not built (deferred; pluggable by design) |
@@ -65,35 +66,30 @@ iframes, a Vite dev server. The product needs things the harness deliberately sk
 
 ---
 
-## 3. The disclosure family — the build plan
+## 3. The disclosure family — as built
 
-This is the product thesis and the encouraging part: **two of the three missing modes
-are pure overlays** over the finished renderer, using adjacency the engine already
-exposes. Build cheapest-first (the PRD's locked order):
+All four modes are implemented on the harness (`spike6/`), built stepwise via the
+`SPEC.md` handoff. The bet held: **focus and path turned out to be pure overlays** —
+adjacency queries over the IR plus SVG-attribute mutation, no layout involvement. How
+each works (full detail in [04 §2A](04-interaction-and-routing.md)):
 
-### 3a. Depth slider (cheapest — it's collapse, driven by a number)
-`effective-ir.ts` already collapses an **arbitrary set** of clusters. A depth slider is
-just: compute each subgraph's nesting depth, set `collapsed = (depth >= N)`, call
-`rerenderWithCollapse()`. No new layout or render code — it drives the existing
-collapse path. Start here.
+- **Collapse / expand** (`collapse.ts` + `effective-ir.ts`) — click a cluster to fold it
+  to a surrogate; re-runs `layout()` on the derived IR.
+- **Depth slider** (`depth.ts`) — folds the diagram by nesting depth
+  (`collapsed = depth > N`, `N` from `0…maxDepth`) by driving the same collapse path. No
+  new layout code.
+- **Focus** (`focus.ts`) — click a node → emphasise its 1-hop neighbourhood, dim the rest.
+  Pure class mutation, no relayout.
+- **Path** (`path.ts`) — click two nodes → light **every directed route** between them
+  (reachability intersection — all parallel branches, not one shortest path), dim the rest.
+- **Shared primitive** (`disclosure-overlay.ts` + `disclosureSettings.ts`) — logical-endpoint
+  adjacency + tri-state emphasis + the mode manager. A whole-cluster connection makes the
+  cluster a **lit-container waypoint** on the route.
 
-### 3b. Focus mode (no layout change at all)
-Click a node → fade everything not connected to it. This is a **visual overlay**, not a
-re-layout: BFS over IR adjacency (the renderer already builds
-`__meta.adjacency: nodeId → edgeKey[]` and `__meta.edgeMap`), then set opacity on the
-nodes/edges outside the connected set. No `layout()` call. The PRD flags focus as novel
-UX — but the *mechanism* is small against this substrate.
-
-### 3c. Path mode (BFS + highlight)
-Click two nodes → highlight the path between them. Again a visual overlay: build an
-adjacency map from `ir.edges`, BFS/shortest-path between the two ids, set a highlight
-class on the path's nodes/edges, dim the rest. The PRD's pre-approved fallback ships the
-family as 3 modes (collapse + depth + focus) and adds path as a fast-follow if it proves
-hard — but the adjacency it needs is trivially available.
-
-> The reusable insight: **focus and path never touch the layout engine.** They are
-> adjacency queries over the IR plus attribute mutation on the SVG. The expensive,
-> novel work (Mermaid-faithful layout) is already paid for.
+> The insight held: **focus and path never touch the layout engine.** They are adjacency
+> queries over the IR plus attribute mutation on the SVG. The expensive, novel work
+> (Mermaid-faithful layout) was already paid for. **Next:** port these onto the product
+> package unchanged (§6) and run the thesis-validation pass.
 
 ---
 
@@ -106,9 +102,11 @@ From `SPIKE6_COMPLETE.md` §6 — restated because they shape the first sprints:
    unprofiled past ~20 nodes. **Land 200/500/1000-node fixtures and frame-time
    instrumentation alongside the first disclosure mode, not after.** The PRD makes
    ≤16ms@200 a release gate.
-2. **Focus & path are unbuilt** — and they're the comprehension thesis. The spike
-   de-risked the substrate, not the product. Treat the §3 plan as real Phase-1 work with
-   real UX risk, even though the plumbing is small.
+2. **The thesis is unvalidated.** All four modes are now built (§3), but whether the
+   disclosure family produces the "aha" on real diagrams is still unproven — that's the
+   comprehension thesis and the real product risk. The spike de-risked the substrate and
+   the modes de-risked the mechanism; **user validation (the 5–10-friend pass) is the next
+   gate.**
 
 ---
 
@@ -136,9 +134,9 @@ If you're the next agent starting Phase 1, a sensible first PR sequence:
    this is the seam that lets the app consume the engine cleanly.
 2. **Add the perf harness**: 200/500/1000-node generated fixtures + a frame-time probe
    around `layout()` and `renderFull()`. Establish the baseline the PRD gate measures.
-3. **Ship the depth slider** (§3a) as the first new disclosure mode — lowest risk,
-   exercises the collapse path end-to-end through the package API.
-4. **Then** backend skeleton (PRD step 2) and focus/path in parallel.
+3. **Port the disclosure family** (collapse/depth/focus/path — already built on the harness,
+   §3) onto the package API, behaviour unchanged.
+4. **Then** backend skeleton (PRD step 2).
 
 Read order for getting up to speed: [README](README.md) → [01](01-data-pipeline.md) →
 [02](02-layout-engine.md) → [05](05-invariants-and-parity.md) (so you don't break

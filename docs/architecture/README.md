@@ -52,7 +52,12 @@ call that all interactions share.
    ▼
  Interaction layer (all re-enter layout() or mutate the SVG directly)
    ├─ drag.ts ............ pin-and-recalculate; side-aware edge rebuild on the dragged node
-   ├─ collapse.ts ........ disclosure mode 1: click cluster → collapse, click surrogate → expand
+   ├─ Disclosure family (the product thesis — all four modes built):
+   │   ├─ collapse.ts ......... click cluster → collapse, click surrogate → expand
+   │   ├─ depth.ts + slider ... fold the diagram by nesting depth (drives the collapse path)
+   │   ├─ focus.ts ........... isolate a clicked node's 1-hop neighbourhood (dim the rest)
+   │   ├─ path.ts ............ light every directed route between two clicked nodes
+   │   └─ disclosure-overlay.ts + disclosureSettings.ts ... shared adjacency + tri-state emphasis + mode manager
    ├─ routing.ts/astar.ts  optional A* orthogonal edge routing (toggle; off by default)
    ├─ pan.ts ............. pan + wheel-zoom (single CSS transform)
    ├─ connect.ts ........ draw new edges between nodes
@@ -94,7 +99,7 @@ Read these when you need the detail behind one box above. Each is self-contained
 | 03 | [Rendering & edges](03-rendering-and-edges.md) | `renderer.ts` SVG model; node shapes; side-aware 4-point curves; edge-label anchoring; `__meta`; refresh flow | you're changing what's drawn or how edges look |
 | 04 | [Interaction & routing](04-interaction-and-routing.md) | drag (pin-and-recalculate); collapse/expand; the three edge modes (dagre / side-aware / A*); pan/zoom; connect | you're adding an interaction or a disclosure mode |
 | 05 | [Invariants & parity](05-invariants-and-parity.md) | the load-bearing invariants you must not break; the Mermaid-dump parity methodology; known gaps & deferred items | you're about to refactor and want to not break parity |
-| 06 | [From spike to product](06-from-spike-to-product.md) | how each module maps to the PRD architecture; what's reusable as-is; what the next agent builds (disclosure family, perf, backend) | you're starting the Phase-1 product build |
+| 06 | [From spike to product](06-from-spike-to-product.md) | how each module maps to the PRD architecture; what's reusable as-is; what's next (port the built disclosure family, perf, backend) | you're starting the Phase-1 product build |
 
 ---
 
@@ -136,9 +141,9 @@ The four PRD disclosure modes, against this substrate:
 
 | Mode | Status | Notes |
 |---|---|---|
-| **Collapse / expand** | ✅ Prototyped | `effective-ir.ts` + `collapse.ts`; surrogate nodes, re-runs `layout()`. |
-| **Depth slider** | ⬜ Not built | Mechanically close to collapse-all-below-depth-N over `effective-ir`. |
-| **Focus mode** | ⬜ Not built | Needs an adjacency walk over IR + opacity mutation; PRD-flagged novel UX. |
-| **Path mode** | ⬜ Not built | Needs BFS over IR adjacency; PRD-flagged novel UX; has a 3-mode fallback. |
+| **Collapse / expand** | ✅ Built | `effective-ir.ts` + `collapse.ts`; surrogate nodes, re-runs `layout()`. |
+| **Depth slider** | ✅ Built | `depth.ts` + toolbar slider; folds by nesting depth (`collapsed = depth > N`, `N` 0…maxDepth) via the collapse path. |
+| **Focus mode** | ✅ Built | `focus.ts`; click a node → 1-hop neighbourhood, dim the rest. Pure overlay, no relayout. |
+| **Path mode** | ✅ Built | `path.ts`; two clicks → **all** directed routes between them; on-route clusters render as lit-container waypoints. Pure overlay. |
 
-→ The build plan for these is in [06-from-spike-to-product](06-from-spike-to-product.md).
+→ How they work: [04 §2A](04-interaction-and-routing.md). Product portability: [06](06-from-spike-to-product.md).
