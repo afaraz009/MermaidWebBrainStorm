@@ -1,0 +1,713 @@
+---
+stepsCompleted: ['step-01-init', 'step-02-context', 'step-03-starter', 'step-04-decisions', 'step-05-patterns', 'step-06-structure', 'step-07-validation', 'step-08-complete']
+lastStep: 8
+status: 'complete'
+completedDate: '2026-06-01'
+inputDocuments:
+  - docs/prd.md
+  - _bmad-output/planning-artifacts/architecture-decisions-renderer.md
+  - docs/architecture/README.md
+  - docs/architecture/01-data-pipeline.md
+  - docs/architecture/02-layout-engine.md
+  - docs/architecture/03-rendering-and-edges.md
+  - docs/architecture/04-interaction-and-routing.md
+  - docs/architecture/05-invariants-and-parity.md
+  - docs/architecture/06-from-spike-to-product.md
+workflowType: 'architecture'
+project_name: 'MermaidWeb'
+user_name: 'Ahmed'
+date: '2026-06-01'
+---
+
+# Architecture Decision Document
+
+_This document builds collaboratively through step-by-step discovery. Sections are appended as we work through each architectural decision together._
+
+## Project Context Analysis
+
+### Requirements Overview
+
+**Functional Requirements:** ~41 FRs across 9 categories. Wave 1.1 (the binding
+launch scope) includes all except FR31–38 (AI Generation = Wave 1.2, Code Connect =
+Wave 1.3, which need design seams now but not implementation). Architecturally the
+FRs cluster into four surfaces:
+- **Workspace** (FR1–5, 12–15a) — live-syncing source editor ↔ Markdown preview ↔
+  interactive canvas; command palette; minimap; pan/zoom; the Renderer Router that
+  sends flowcharts to the native pipeline and all other Mermaid types to a
+  viewer-only fallback.
+- **Disclosure family** (FR6–11) — collapse/expand, focus, path, depth slider.
+  Already built and spike6-validated on the engine harness; focus/path are pure
+  IR-adjacency overlays, collapse re-runs layout on a derived IR.
+- **Persistence, sharing, identity** (FR16–25) — anonymous-first session tokens,
+  cryptographically random short-URL slugs, recipient-as-first-class-user (same SPA
+  bundle), anonymous→premium claim, view/edit share permissions.
+- **Account, premium, observability** (FR26–30, 39–41) — auth, hosted-checkout
+  billing, export to PNG/SVG/PDF **with collapse state preserved**, custom branding,
+  first-party analytics live before launch.
+
+**Non-Functional Requirements:** 37 NFRs. The architecturally load-bearing ones:
+- *Performance:* recipient cold-load TTI ≤3.0s and first-render ≤1.5s @200 nodes
+  (the distribution-loop SLA); disclosure frame time ≤16ms p50 / ≤33ms p95 @200
+  nodes; save→share-URL ≤300ms p50; 350KB initial-bundle budget (from renderer ADR).
+- *Security/Privacy:* encryption at rest; ≥64-bit random slugs (no enumeration);
+  noindex/no public discovery surface (hard privacy rule); argon2id; PCI SAQ-A via
+  hosted checkout only; TLS 1.2+.
+- *Reliability:* ≥99.5% save/load; issued share URLs never 404 except by owner
+  deletion; anonymous diagrams persist ≥90 days; graceful degradation with in-flight
+  edits preserved when the backend is unreachable.
+- *Scalability/Cost/Maintainability:* absorb a 10× viral spike by configuration, not
+  re-architecture; opex sustainable without revenue; automated build/test/deploy;
+  full stack runnable locally in ≤30 minutes; performance budgets enforced in CI
+  against 200/500-node fixtures.
+
+### Scale & Complexity
+
+- Primary domain: **Browser single-page application (developer tools)** plus a
+  lightweight persistence / auth / billing / analytics backend.
+- Complexity level: **Medium** — but the genuine technical risk (owned SVG renderer
+  with Mermaid-faithful recursive layout + the 4-mode disclosure family) is
+  **already built and spike6-validated**. Remaining work is largely conventional
+  web-SaaS scaffolding wrapped around a finished, framework-less engine.
+- Estimated architectural components: ~15–20 — the engine package, ~8–10 front-end
+  shell modules, ~6–7 backend services, and the hosting/storage/monitoring infra.
+
+### Technical Constraints & Dependencies
+
+**Locked (not re-litigated this pass):**
+- SVG renderer; Mermaid as **parser only** + `dagre-d3-es` + `d3-shape`; owned
+  rendering pipeline; pin-and-recalculate drag; Position-3 hybrid (native flowchart
+  pipeline + Mermaid viewer-only fallback for other types).
+- SPA, not MPA; recipient pages hydrate from the same SPA bundle.
+- Backend persistence from day one (no URL-encoded diagram state).
+- Mermaid is the only diagram format in v1; Markdown is first-class.
+- Desktop-first; mobile is viewer-only. Tier-1 browsers: Chrome/Edge/Firefox last 2,
+  Safari 15+.
+- First-party analytics only (no GA/ad-tech); transactional email only at launch;
+  Stripe **or** Paddle hosted checkout (processor TBD this phase).
+
+**Carried into the engine boundary:** the engine is plain TS mutating the SVG DOM
+(no framework, no state library). It is embeddable under any front-end framework as a
+pure `IR → SVG` function plus event handlers — `06-from-spike-to-product.md` proposes
+extracting `spike6/src/` into a `@mermaidweb/render` package with a small public API
+(`parseToIR`, `layout`, `renderFull`, `attachDrag`, `deriveEffectiveIR`).
+
+**Resource constraint:** solo founder, weekend pace, coding-agent-assisted → bias
+toward boring, well-trodden building blocks and low operational surface.
+
+### Cross-Cutting Concerns Identified
+
+- **Anonymous-first identity** — session tokens span persistence, sharing, claim-flow,
+  and security; not an auth-tier afterthought.
+- **Performance budget enforcement** — 200/500-node fixtures + frame-time/cold-load
+  probes spanning engine, bundle/build, and hosting; a CI release gate.
+- **Privacy/encryption posture** — default-sensitive content across frontend, backend,
+  and infra (encryption, noindex, no gallery, SAQ-A).
+- **Live-sync state** — single source of truth feeding source editor, Markdown
+  preview, and canvas without round-trips.
+- **Disclosure/collapse-state serialization** — must round-trip through the
+  Diagram-Document model and the export pipeline (FR29).
+- **Observability from day one** — analytics wired and verified before public launch,
+  not retrofitted.
+- **Engine-package boundary** — the seam between the finished framework-less engine
+  and the chosen front-end framework (one of this pass's four open decisions).
+
+## Starter Template Evaluation
+
+### Primary Technology Domain
+
+Browser **single-page application** (Vite + React + TypeScript) wrapping the
+existing framework-less render engine, plus an edge/API layer on Cloudflare Workers
+and a Supabase data plane. Not a meta-framework app (SSR rejected — see rationale).
+
+### Starter Options Considered
+
+- **Vite + React-TS SPA (`create-vite react-ts`) + `@cloudflare/vite-plugin`** —
+  minimal, framework-agnostic base on the same Vite/TS toolchain the engine already
+  uses; the Cloudflare plugin adds the Workers runtime + bindings (R2/KV/edge fns) and
+  SPA-fallback routing in one project. **Selected.**
+- **Meta-framework (Next.js / Remix / TanStack Start)** — rejected: PRD mandates
+  SPA-not-MPA; all diagram pages are `noindex` (no SEO payoff); the SVG render is
+  inherently client-side, so SSR adds a server render path with no benefit and more ops.
+- **Opinionated React boilerplate (T3-style, batteries-included)** — rejected for a
+  solo founder who wants deliberate, boring, minimal dependencies; we add libraries
+  intentionally rather than inherit a stack.
+
+### Selected Starter: Vite 8 + React 19 + TypeScript (SPA) on Cloudflare
+
+**Rationale for Selection:**
+- Same Vite/TypeScript toolchain as the engine → the `@mermaidweb/render` package and
+  the app share one build/test pipeline (engine extraction stays seamless).
+- React: largest component ecosystem (CodeMirror, cmdk, etc.) + best coding-agent
+  training data for weekend-pace, agent-assisted build; bundle fits the 350KB budget.
+- `@cloudflare/vite-plugin` 1.0 makes "SPA + edge Workers bindings" first-class in one
+  project, serving the recipient cold-load SLA and viral-spike-by-config NFRs.
+- Supabase as data plane keeps anonymous tokens, encryption-at-rest, RLS, and the
+  anonymous→premium claim flow boring and fast to ship.
+
+**Initialization Command** (versions current as of June 2026):
+
+```bash
+# Scaffold the SPA (Vite 8 / React 19 / TypeScript)
+npm create vite@latest mermaidweb-app -- --template react-ts
+
+# Add the Cloudflare Vite plugin (Workers runtime + bindings + SPA fallback)
+npm install -D @cloudflare/vite-plugin wrangler
+
+# Data plane client
+npm install @supabase/supabase-js
+```
+
+**Architectural Decisions Provided by the Starter:**
+
+- **Language & Runtime:** TypeScript (strict mode), React 19, Node 20.19+/22.12+.
+- **Build Tooling:** Vite 8 (Rolldown bundler); `@cloudflare/vite-plugin` for the
+  Workers runtime in dev (`workerd`) and `wrangler deploy` to Cloudflare; SPA fallback
+  via `not_found_handling = "single-page-application"`.
+- **Deployment Target:** Cloudflare (static assets + edge Workers); Supabase for
+  durable Postgres/Auth/Storage.
+
+**Deliberately left open (decided in step-04 / step-05 / step-06):**
+
+- **Styling** (Tailwind vs CSS Modules vs vanilla-extract) — base template ships none.
+- **State management** (Zustand / Jotai / Redux Toolkit) for the live source↔preview↔
+  canvas sync — base template ships none.
+- **Editor & UI libs** (CodeMirror 6 for the Mermaid editor, `cmdk` for the command
+  palette, a Markdown renderer) — added deliberately.
+- **Data fetching** (TanStack Query over `supabase-js`) and the engine-package
+  monorepo layout (`@mermaidweb/render` + app) — covered in step-06 structure.
+- **Testing** (Vitest for unit, Playwright — already in the repo for engine
+  verification — for E2E).
+
+**Note:** Project initialization with the command above should be the **first
+implementation story**.
+
+## Core Architectural Decisions
+
+### Decision Priority Analysis
+
+**Critical Decisions (block implementation):**
+- Engine extracted to `@mermaidweb/render` (React-free) behind a `DiagramController` facade.
+- Diagram-Document data model: one row per *document*, source-of-truth = Markdown,
+  `view_state` jsonb keyed by stable fence IDs.
+- Identity & access: Supabase anonymous auth + uid-preserving claim; read-by-slug
+  capability + RLS owner edit/delete.
+- Backend topology: hybrid (direct supabase-js + RLS for CRUD; Hono Workers for the
+  edge paths).
+- App foundation: Vite 8 + React 19 + TS SPA on Cloudflare (from step-03).
+
+**Important Decisions (shape architecture):**
+- Hybrid React↔engine binding (controlled `view_state` + imperative commands).
+- State: Zustand + TanStack Query. Routing: React Router v7 (SPA mode).
+- Edge-cached recipient read path; encryption = Supabase disk-level + access control.
+- PostHog analytics; Sentry monitoring; GitHub Actions CI with a perf-budget gate.
+- pnpm-workspaces monorepo; Supabase CLI local stack for dev.
+
+**Deferred Decisions (post-MVP or later trigger):**
+- **Payment processor (Paddle vs Stripe)** — deferred; decide before the premium-tier
+  build. Architecture stays processor-agnostic: a webhook Worker + a `subscription`
+  state row.
+- App-level field encryption — revisit only on enterprise/regulated demand.
+- elkjs "Adaptive" layout (pluggable by design); sequence-diagram disclosure
+  graduation (post-launch demand); mobile editor, version history / diff view (V2).
+
+### Data Architecture
+
+- **Source of truth = Markdown text.** One `documents` row per `/d/{slug}`. IR, layout
+  coords, SVG, adjacency are always recomputed by the engine on load — never persisted
+  (eliminates dual-write drift; matches the engine's derive-from-source model).
+- **`documents`** (Supabase Postgres): `id uuid` · `slug text unique` (≥64-bit random,
+  `nanoid(12)`/`pgcrypto`) · `markdown text` · `view_state jsonb` · `title text` ·
+  `owner_id uuid null` → `auth.users` · `visibility` (`private`/`view`/`edit`) ·
+  `theme jsonb null` · `created_at` · `updated_at` · `last_accessed_at` (drives
+  ≥90-day anon retention, NFR-R3).
+- **`view_state` (soft overlay), keyed by stable fence ID** (`id=…` auto-stamped into
+  each ```` ```mermaid ```` fence, stripped before parse): `{ collapsed[], depth?,
+  pins{nodeId→{x,y}} }` per block. Reconciled on parse — orphaned IDs dropped silently.
+  Pins persisted best-effort; pan/zoom/focus/path are ephemeral.
+- **Shared links open in the author's saved `view_state`.**
+- **Validation:** shared Zod schemas (`packages/shared`) + markdown size cap; Mermaid
+  syntax validated client-side (FR5). **Migrations:** Supabase CLI SQL, in-repo.
+- No version-history table in v1 (diff view = V2).
+
+### Authentication & Security
+
+- **Supabase Auth.** Anonymous sign-in (FR16/17); **uid-preserving conversion**
+  (`updateUser` linking email/OAuth) = automatic anonymous→premium claim (FR19);
+  email+password (bcrypt default, NFR-S5); Google + GitHub OAuth fast-follow (FR26).
+- **Sessions via `@supabase/ssr`** — cookie-based, httpOnly/Secure/SameSite=Lax, PKCE
+  (NFR-S6). Authorization uses verified `getUser()`, never unverified `getSession()`.
+- **Access control:** read-by-slug is a capability (unguessable ≥64-bit slug, NFR-S2)
+  served via a `SECURITY DEFINER` RPC `get_shared_document(slug)`; edit/delete via RLS
+  (`owner_id = auth.uid()`); `is_anonymous` JWT claim separates tiers; `visibility`
+  gates premium share permissions (FR25).
+- **Encryption at rest = Supabase disk-level AES-256 + RLS + unguessable slugs + TLS
+  1.2+** (NFR-S1/S4). `noindex/nofollow` + robots exclusion on all `/d/*` (NFR-S3).
+- **Rate limiting** on Worker endpoints (Hono middleware) + Supabase Auth limits
+  (NFR-S6). Dependency scanning weekly (NFR-S9).
+
+### API & Communication Patterns
+
+- **Authed CRUD:** `supabase-js` (PostgREST) directly, secured by RLS — no hand-written
+  CRUD API.
+- **Cloudflare Workers (Hono), 3 endpoints only:** `GET /api/d/:slug` (recipient read,
+  edge-cached with TTL + purge-on-write), `POST /api/webhooks/:processor` (subscription
+  state → Supabase, service role), `POST /api/analytics` (first-party event ingest →
+  PostHog, keys server-side).
+- **Contracts:** shared Zod schemas type-check Worker payloads and the engine
+  `ViewState`. Consistent JSON error envelope; client errors surfaced via TanStack
+  Query. Optimistic UI on create/save/share (NFR optimistic), debounced save (~500ms).
+
+### Frontend Architecture
+
+- **Engine package `@mermaidweb/render` (framework-agnostic)** exposes
+  `DiagramController` (`mount/destroy`, commands `focus/path/collapse/expand/setDepth/
+  panTo/resetLayout/export`, events `viewStateChange/select/parseError/ready`). React
+  binding (`<DiagramCanvas>` / `useDiagram`) lives app-side, extractable to
+  `@mermaidweb/render-react` later. **The engine owns its SVG subtree; React never
+  reconciles it.**
+- **Binding = hybrid:** `view_state` is controlled (React holds canonical, engine emits
+  deltas up, React debounces persistence); transient actions are imperative commands.
+- **State:** Zustand 5 (client/UI/document — the controller can drive a vanilla store
+  without React) + TanStack Query 5 (Supabase server state, optimistic).
+- **Routing:** React Router v7 (SPA mode, `ssr:false`).
+- **Editor/preview:** CodeMirror 6 (Mermaid editing, inline errors) + `react-markdown`
+  (remark) preview; live flow = one text field → preview + debounced
+  `controller.setSource()`.
+- **Renderer Router (PRD seam):** flowchart/graph → native pipeline; all other Mermaid
+  types → lazy-loaded full `mermaid` viewer (pan/zoom only, FR15a). **Code-split** the
+  editor, the mermaid viewer-fallback, and elkjs to protect the 350KB recipient bundle
+  (NFR-P1/P2).
+
+### Infrastructure & Deployment
+
+- **Hosting:** Cloudflare (SPA static assets + Hono Workers) via `@cloudflare/vite-plugin`;
+  Supabase data plane.
+- **Environments:** Supabase CLI local (Docker) → per-PR Cloudflare preview + staging
+  Supabase → production. Secrets via `wrangler secret`; service-role key only in Workers.
+- **CI/CD (GitHub Actions):** typecheck · lint · Vitest · Playwright (critical paths,
+  NFR-M3) · **perf-budget gate vs 200/500-node fixtures** (NFR-P8) → `wrangler deploy` +
+  `supabase db push`.
+- **Monitoring:** Sentry (single error channel, NFR-M4) + Workers/Supabase logs +
+  PostHog; retention ≥30 days (NFR-M5).
+- **Scaling:** edge-cached recipient read shields Postgres; 10× spike = Workers
+  autoscale + cache, with Supabase compute tier as the one config dial (NFR-Sc1/Sc2).
+- **Repo:** pnpm workspaces — `packages/render`, `packages/shared`, `apps/web`,
+  `workers/*` (detailed in step-06).
+
+### Decision Impact Analysis
+
+**Implementation sequence (refines PRD build order):**
+1. Extract `@mermaidweb/render` + `DiagramController` (no behavior change); `packages/shared` types/Zod.
+2. Perf harness: 200/500/1000-node fixtures + frame-time/cold-load probes → CI gate baseline.
+3. App shell: Vite+React+Cloudflare scaffold, React Router, Zustand, `<DiagramCanvas>` binding; port the built disclosure family onto the package API.
+4. Backend skeleton: Supabase schema + RLS + anonymous auth + slug + `get_shared_document` RPC; Hono recipient-read Worker with edge cache.
+5. Workspace: CodeMirror editor + react-markdown preview + live-sync; command palette; minimap.
+6. Premium: auth conversion/claim, share permissions, export-with-collapse, themes — **then** wire the (deferred) payment processor.
+7. Analytics (PostHog) + Sentry wired continuously, verified before launch.
+
+**Cross-component dependencies:**
+- `view_state` shape is the contract binding engine ↔ data model ↔ export ↔ persistence — versioned in `packages/shared`.
+- Fence-ID stamping couples the Markdown parse layer ↔ data model ↔ engine block identity.
+- Edge-cache invalidation couples the save path (Supabase write) ↔ the Worker recipient-read cache (purge-on-write).
+- RLS + `is_anonymous` claim couples auth ↔ every data access path.
+
+## Implementation Patterns & Consistency Rules
+
+### Pattern Categories Defined
+
+**Critical Conflict Points Identified:** ~15 areas where independent AI agents could
+diverge. Two are project-specific (engine conformance; the Postgres↔TS casing seam);
+the rest are conventional. These rules are binding on every agent and every PR.
+
+### Rule 0 — Conform to the existing engine (highest priority)
+
+The `spike6/` engine is the seed of `@mermaidweb/render`. Agents MUST match its
+established conventions and MUST NOT rename or "simplify" them:
+- Module files: **kebab-case** (`parser-adapter.ts`, `effective-ir.ts`).
+- IR/types: **camelCase** fields (`fromCluster`, `toCluster`, `originalPoints`,
+  `labelPos`); types/interfaces **PascalCase** (`IRNode`, `NodeShape`).
+- DOM hooks: `data-node-id`, `data-subgraph-id`; live data on `mountEl.__meta`.
+- Edge identity: `L_<index>`; node `(x,y)` is the **center** (renderer translates to
+  top-left). Edges are 4-point side-aware curves.
+- The invariants in `docs/architecture/05-invariants-and-parity.md`
+  (`fromCluster`/`toCluster`, `graph.children()` order, edge-id identity) are
+  **inviolable** — changing them breaks Mermaid parity.
+
+### Naming Patterns
+
+**Database (Postgres / Supabase):** `snake_case`; **plural** tables (`documents`,
+`subscriptions`); PK `id` (uuid); FK `<entity>_id` (`owner_id`); timestamps
+`created_at` / `updated_at` / `last_accessed_at` (`timestamptz`); indexes
+`idx_<table>_<cols>`; RLS policies `<table>_<action>_<audience>`
+(`documents_select_owner`).
+
+**API (Hono Workers, app-facing):** routes under `/api/*`, lowercase kebab, plural
+nouns, params `:slug` / `:id`; **request/response JSON fields are camelCase** (see
+casing rule).
+
+**Code (TypeScript):** React components `PascalCase.tsx`; hooks `useThing.ts`; other
+modules `kebab-case.ts`; functions/variables `camelCase`; types/interfaces
+`PascalCase`; constants `UPPER_SNAKE_CASE`; booleans `isX` / `hasX`.
+
+### Structure Patterns
+
+- **Monorepo (pnpm):** `packages/render` (engine), `packages/shared` (types + Zod +
+  casing maps), `apps/web` (React SPA + its Cloudflare Worker), detailed in step-06.
+- **Feature-first** inside `apps/web/src/features/<feature>/` (workspace, editor,
+  canvas, palette, share, account); cross-cutting UI in `components/`, hooks in
+  `hooks/`, non-UI helpers in `lib/`.
+- **Tests co-located** as `*.test.ts(x)` (Vitest); Playwright E2E in `e2e/`.
+
+### Format Patterns
+
+- **Casing seam (the one rule):** **camelCase in TS, snake_case in DB.** The ONLY place
+  mapping happens is a Zod transform layer in `packages/shared`. No ad-hoc mapping
+  anywhere else; never let `snake_case` leak into app/engine code.
+- **Worker responses:** success = the bare resource as JSON (HTTP status conveys
+  outcome); error = `{ "error": { "code": string, "message": string } }` with the
+  correct HTTP status. (Direct supabase-js calls keep Supabase's native shape, mapped
+  via `packages/shared`.)
+- **Dates:** ISO-8601 UTC strings in all JSON. **IDs:** uuid v4 internal; base62 slug
+  (≥64-bit) external.
+
+### Communication Patterns
+
+- **Engine events:** the existing camelCase controller events
+  (`viewStateChange` / `select` / `parseError` / `ready`) — extend, never rename.
+- **State (Zustand):** multiple **domain stores** — `useWorkspaceStore` (doc/source),
+  `useDiagramStore` (the controlled `view_state` ↔ controller bridge), `useUiStore`
+  (panes/palette/theme). Immutable updates only, inside store actions; components read
+  via selectors. No mutation outside actions; no cross-store reach-in.
+- **Server state (TanStack Query):** centralized query-key factory in
+  `lib/query-keys.ts` (`documents.detail(slug)`, `documents.list(userId)`); never
+  hand-write key arrays inline.
+- **`view_state` schema** changes go through the versioned schema in `packages/shared`.
+
+### Process Patterns
+
+- **Validation:** Zod at every boundary (Worker input, forms, `view_state` on
+  load/parse). Parse-don't-validate; reuse shared schemas — no duplicate hand-written
+  validators.
+- **Error handling:** React error boundary per route; Worker errors → JSON envelope +
+  Sentry; engine `parseError` surfaced **inline in the editor** (FR5). User-facing
+  message text is distinct from logged technical detail.
+- **Loading:** TanStack Query `isPending`/`isFetching`; skeletons on first load, inline
+  spinners on refetch. **Optimistic mutations with rollback** for create/save/share;
+  in-flight edits preserved on failure (NFR-R6).
+- **Auth flow:** `signInAnonymously()` on first load if no session (FR16); convert via
+  `updateUser` on signup (FR19); **authorize only with verified `getUser()`**, never
+  `getSession()`.
+
+### Enforcement Guidelines
+
+**All AI agents MUST:**
+- Read this section + `docs/architecture/05-invariants-and-parity.md` before writing code.
+- Pass TypeScript strict, ESLint, Prettier — CI blocks on any lint/type error.
+- Keep all DB↔TS mapping inside `packages/shared`; import types from there, never
+  redefine DTOs locally.
+- Add/extend Zod schemas in `packages/shared` rather than inlining validation.
+
+**Pattern enforcement:** ESLint config + `tsconfig` strict are the machine-checkable
+floor; this section is the human-checkable source of truth; violations are fixed in the
+PR that introduces them, not deferred.
+
+### Pattern Examples
+
+**Good:**
+- `const { ownerId } = mapDocument(row)` — snake→camel mapping via `packages/shared`.
+- `queryClient.invalidateQueries({ queryKey: documents.detail(slug) })` after a save.
+- `useDiagramStore.getState().setViewState(next)` driven by the engine's
+  `viewStateChange` event.
+
+**Anti-patterns:**
+- `row.owner_id` used directly in a React component (casing leak).
+- A second `interface Document {…}` redefined inside `apps/web` (DTO drift).
+- Re-running full `layout()` on drag, or renaming `fromCluster`/`toCluster` (breaks
+  engine invariants).
+- Authorizing a request from `getSession()` (unverified) instead of `getUser()`.
+
+## Project Structure & Boundaries
+
+### Complete Project Directory Structure
+
+The existing repo becomes the pnpm-workspaces monorepo root; `spike6/src/` migrates into
+`packages/render` (git history preserved), and the harness HTML pages become the package
+demo. `docs/architecture/**` and the planning artifacts stay as-is.
+
+```
+mermaidweb/
+├── package.json                      # workspace root (pnpm)
+├── pnpm-workspace.yaml
+├── tsconfig.base.json                # strict; path aliases to @mermaidweb/*
+├── .eslintrc.cjs · .prettierrc · .gitignore
+├── .github/workflows/ci.yml          # typecheck · lint · vitest · playwright · perf-gate · deploy
+│
+├── packages/
+│   ├── render/                       # @mermaidweb/render — framework-agnostic engine
+│   │   ├── src/
+│   │   │   ├── types.ts                      # IR model (camelCase fields)
+│   │   │   ├── parser-adapter.ts             # parseToIR (mermaid = parser only)
+│   │   │   ├── effective-ir.ts               # deriveEffectiveIR (collapse → surrogates)
+│   │   │   ├── layout.ts · recursive-layout.ts · layout-core.ts · cluster-bbox.ts
+│   │   │   ├── renderer.ts                   # renderFull → SVG (data-* hooks, __meta)
+│   │   │   ├── drag.ts · pan.ts · connect.ts
+│   │   │   ├── collapse.ts · depth.ts · focus.ts · path.ts · disclosure-overlay.ts
+│   │   │   ├── routing.ts · astar.ts         # optional A* (off by default)
+│   │   │   ├── controller.ts                 # NEW: DiagramController facade
+│   │   │   └── index.ts                      # public API barrel
+│   │   ├── fixtures/                         # fixture_*.mmd + generated 200/500/1000-node
+│   │   ├── perf/                             # frame-time + cold-load probes
+│   │   ├── demo/                             # ex-harness (index/our-renderer/mermaid-debug)
+│   │   └── package.json · tsconfig.json
+│   │
+│   └── shared/                       # @mermaidweb/shared — the ONLY DB↔TS mapping layer
+│       ├── src/
+│       │   ├── schemas/{document,view-state,subscription}.ts   # Zod (+ version on view-state)
+│       │   ├── mappers.ts                    # mapDocument(row) snake→camel, and back
+│       │   ├── types.ts · index.ts
+│       └── package.json · tsconfig.json
+│
+├── apps/
+│   └── web/                          # React SPA + its Cloudflare Worker (one Vite project)
+│       ├── index.html · vite.config.ts        # Vite 8 + @cloudflare/vite-plugin + react
+│       ├── wrangler.jsonc                     # not_found_handling=single-page-application; bindings
+│       ├── public/robots.txt                  # Disallow: /d/
+│       ├── src/
+│       │   ├── main.tsx · app.tsx · router.tsx # React Router v7 (SPA mode)
+│       │   ├── routes/                         # /, /d/:slug, /app, /account, /pricing
+│       │   ├── features/
+│       │   │   ├── workspace/                  # FR1–4: panes + live-sync orchestration
+│       │   │   ├── editor/                     # FR1,5: CodeMirror 6 (inline errors)
+│       │   │   ├── preview/                    # FR2: react-markdown
+│       │   │   ├── canvas/                     # FR3,15: <DiagramCanvas> + Renderer Router
+│       │   │   ├── disclosure/                 # FR6–11: collapse/focus/path/depth controls
+│       │   │   ├── palette/                    # FR12–13: cmdk fuzzy search
+│       │   │   ├── minimap/                    # FR14
+│       │   │   ├── share/                      # FR22–25
+│       │   │   ├── export/                     # FR29: PNG/SVG/PDF w/ collapse state
+│       │   │   ├── account/                    # FR20,28,30
+│       │   │   └── auth/                       # FR16–19,26: anon + signup + claim
+│       │   ├── components/                     # shared UI primitives
+│       │   ├── hooks/                          # useDiagram, useAutoSave, useAnonSession
+│       │   ├── stores/                         # workspace-store · diagram-store · ui-store (Zustand)
+│       │   ├── lib/
+│       │   │   ├── supabase.ts                 # @supabase/ssr cookie client
+│       │   │   ├── query-client.ts · query-keys.ts
+│       │   │   ├── markdown.ts                 # fence parse + stable-id stamping
+│       │   │   └── analytics.ts                # PostHog → /api/analytics
+│       │   └── styles/
+│       ├── worker/                            # the Cloudflare Worker (Hono)
+│       │   ├── index.ts                        # Hono app
+│       │   ├── routes/{shared-document,webhooks,analytics}.ts
+│       │   └── middleware/{rate-limit,cors}.ts
+│       ├── e2e/                                # Playwright critical paths (NFR-M3)
+│       └── package.json · tsconfig.json
+│
+├── supabase/
+│   ├── config.toml                            # CLI local stack
+│   └── migrations/                            # SQL: documents, subscriptions, RLS, get_shared_document RPC
+│
+└── docs/architecture/**                       # existing as-built engine docs (unchanged)
+```
+
+### Architectural Boundaries
+
+**API boundaries:**
+- **Client → Supabase** (authed CRUD): `supabase-js` (PostgREST) under RLS — list/rename/
+  delete/save own documents (FR20/21), create (FR16), claim (FR19).
+- **Client → Worker** (`/api/*`): recipient read, analytics ingest.
+- **Worker → Supabase** (service role): `get_shared_document(slug)` RPC + webhook writes.
+- **Webhook processor → Worker**: `/api/webhooks/:processor` (deferred processor).
+
+**Component boundaries:**
+- React owns the container + chrome; **`@mermaidweb/render` owns the SVG subtree** —
+  React never reconciles it. Sole bridge = `DiagramController` (props in · imperative
+  commands · events out). The engine imports nothing app-side; it never imports React,
+  Supabase, or stores.
+
+**State boundaries:**
+- **Engine** = geometry truth (ephemeral, recomputed). **Zustand domain stores** =
+  client/UI/document truth. **TanStack Query** = server cache. The controlled
+  `view_state` is the only object that crosses engine↔store↔server.
+
+**Data boundaries:**
+- `documents` + RLS is the persistence boundary; `packages/shared` is the **only** place
+  snake_case↔camelCase mapping and Zod validation occur; the `view_state` schema (versioned
+  in `shared`) is the contract for engine ↔ persistence ↔ export.
+
+### Requirements → Structure Mapping (cross-cutting)
+
+- **Anonymous identity & claim (FR16–19):** `features/auth` + `hooks/useAnonSession` +
+  Supabase anonymous auth + `updateUser` conversion; RLS keys off `auth.uid()`/`is_anonymous`.
+- **Live-sync (FR1–2):** `features/workspace` orchestrates: editor change → `lib/markdown.ts`
+  (parse + stamp) → `preview` re-render + debounced `controller.setSource()`.
+- **Disclosure (FR6–11):** behavior in `packages/render` (built); UI triggers in
+  `features/disclosure`; state via `diagram-store` ↔ controller `viewStateChange`.
+- **Export with collapse state (FR29):** `features/export` reads current `view_state` +
+  `controller.export(fmt)`.
+
+### Integration Points & Data Flow
+
+**Author save path:** edit → `workspace` → `diagram-store` (engine deltas) → debounced
+TanStack mutation → `supabase-js` write (optimistic) → on success, Worker purges the
+`/api/d/:slug` edge-cache entry.
+
+**Recipient cold path:** `GET /api/d/:slug` (Hono Worker, edge-cached) → `get_shared_document`
+RPC → document JSON → SPA hydrates → engine `parseToIR → layout → renderFull` →
+author's saved `view_state` applied. Lazy-load CodeMirror / mermaid-fallback only if needed.
+
+**External integrations:** Supabase (data plane), Cloudflare (edge/host), PostHog (analytics),
+Sentry (errors), payment processor (deferred, isolated to the webhook Worker + `subscriptions`).
+
+### Development Workflow Integration
+
+- **Dev:** `supabase start` (Docker) + `pnpm --filter web dev` (Vite + `workerd` via the
+  Cloudflare plugin → SPA + Worker together).
+- **Build:** `pnpm -r build`; the Cloudflare plugin emits SPA assets + Worker; `packages/*`
+  build first (workspace topo order).
+- **Deploy:** CI runs the gate, then `wrangler deploy` + `supabase db push`; per-PR preview
+  deploys point at the staging Supabase project.
+
+## Architecture Validation Results
+
+### Coherence Validation ✅
+
+**Decision Compatibility:** All chosen technologies are current (June 2026) and mutually
+compatible: Vite 8 · React 19 · `@cloudflare/vite-plugin` 1.0 · Supabase (`supabase-js` 2 +
+`@supabase/ssr`) · Zustand 5 · TanStack Query 5 · React Router 7 · Hono · CodeMirror 6. The
+`@mermaidweb/render` engine is framework-agnostic plain TS, so it embeds under React without
+conflict. The Cloudflare-host + Supabase-data-plane split is a proven, well-trodden pattern;
+the one cross-provider hop (Worker→Supabase) is shielded on the hot path by the edge cache.
+No contradictory decisions found.
+
+**Pattern Consistency:** The casing seam (camelCase TS / snake_case DB, mapped only in
+`packages/shared`), the engine-conformance rule (Rule 0), and the naming/communication/process
+patterns all align with the stack. The controlled-`view_state` binding is consistent across
+data model → engine → persistence → export.
+
+**Structure Alignment:** The pnpm monorepo (`packages/render`, `packages/shared`, `apps/web`
++ its Worker) directly realizes the engine-package boundary and the single-mapping-layer rule.
+Boundaries (React owns container / engine owns SVG subtree; RLS as the data boundary) are
+expressible in the structure as drawn.
+
+### Requirements Coverage Validation ✅
+
+**Functional Requirements (Wave 1.1):**
+- Workspace/editing FR1–5 → `features/{workspace,editor,preview,canvas}` + inline parse errors.
+- Disclosure FR6–11 → `packages/render` (built) + `features/disclosure`.
+- Navigation FR12–15a → `features/{palette,minimap}`, engine pan/zoom, Renderer Router +
+  lazy mermaid viewer.
+- Persistence/session FR16–21 → Supabase anonymous auth, `documents` + RLS, slug, claim.
+- Sharing FR22–25 → slug capability + edge-cached Worker read + `visibility`.
+- Account/premium FR26–30 → auth/OAuth, themes, `controller.export` (collapse state), deletion.
+- Observability FR39–41 → PostHog + analytics Worker, verified pre-launch.
+- FR31–38 (AI, Code Connect) → correctly **seam-only** (Waves 1.2/1.3): premium auth +
+  quota hooks land later; no architecture rework required.
+
+**Non-Functional Requirements:**
+- Performance P1/P2/P7 (cold-load, first-render, save→URL) → edge-cached recipient read +
+  optimistic save + 350KB budget with code-splitting. P3/P4/P5/P8 → client-side engine +
+  **CI perf-budget gate** vs 200/500/1000-node fixtures.
+- Security S1–S11 → disk-level encryption + RLS + ≥64-bit slugs + noindex/robots + TLS +
+  bcrypt + httpOnly cookie sessions + SAQ-A hosted checkout + 30-day deletion + weekly dep
+  scan + (1.2) no-train LLM posture.
+- Reliability R1–R6 → Supabase durability/backups, slug stability (no 404 except owner
+  delete), `last_accessed_at`-driven ≥90-day retention, optimistic-with-rollback degradation.
+- Scalability Sc1–Sc2 → edge cache shields Postgres; Workers autoscale; Supabase tier = the
+  one config dial.
+- Maintainability M1–M5 / Cost C1–C4 → automated CI/CD, ≤30-min local (Supabase CLI + pnpm),
+  critical-path Playwright, Sentry, low Cloudflare opex.
+
+### Implementation Readiness Validation ✅
+
+- **Decisions** documented with verified versions; the four open decisions are all resolved
+  (payments explicitly deferred with a processor-agnostic seam).
+- **Structure** is concrete (complete tree, boundaries, FR→location mapping, data-flow paths).
+- **Patterns** cover the conflict points including the two project-specific ones (engine
+  conformance, casing seam) with examples and anti-patterns.
+
+### Gap Analysis Results
+
+**Critical gaps (block implementation):** None.
+
+**Important gaps (track, non-blocking):**
+1. **Payment processor undecided** — premium billing (FR27) cannot ship until Paddle/Stripe
+   is chosen; the rest of premium (auth, claim, share permissions, export, themes) is
+   unblocked. Seam kept processor-agnostic (webhook Worker + `subscriptions`).
+2. **Performance is addressed but unmeasured** — NFR-P3/P4/P5 are validated only once the CI
+   perf-gate + 200/500/1000-node fixtures exist (impl step 2). Carried risk from `docs/
+   architecture/06`. The architecture *enables* the proof; it is not yet proven.
+3. **Net-new (specced, not built):** command palette, minimap, Renderer Router, mermaid
+   viewer-fallback — expected at architecture stage; flagged so they aren't assumed done.
+4. **Subtle integration points needing focused tests:** edge-cache purge-on-write (NFR-R2,
+   no stale/404) and `view_state` fence-ID stamping + orphan reconciliation (multi-block).
+
+**Nice-to-have (later):** elkjs "Adaptive" layout, version history / diff view, app-level
+field encryption — all deferred by design.
+
+### Validation Issues Addressed
+
+No critical issues. The important gaps above are documented with owners/triggers; the two
+carried risks (perf unmeasured, comprehension thesis unvalidated) are product/sequencing
+concerns surfaced from `docs/architecture/06`, not architecture defects — both are mitigated
+by the front-loaded CI perf-gate and the pre-launch beta.
+
+### Architecture Completeness Checklist
+
+**Requirements Analysis**
+- [x] Project context thoroughly analyzed
+- [x] Scale and complexity assessed
+- [x] Technical constraints identified
+- [x] Cross-cutting concerns mapped
+
+**Architectural Decisions**
+- [x] Critical decisions documented with versions
+- [x] Technology stack fully specified
+- [x] Integration patterns defined
+- [x] Performance considerations addressed (measurement pending CI gate — see Gap #2)
+
+**Implementation Patterns**
+- [x] Naming conventions established
+- [x] Structure patterns defined
+- [x] Communication patterns specified
+- [x] Process patterns documented
+
+**Project Structure**
+- [x] Complete directory structure defined
+- [x] Component boundaries established
+- [x] Integration points mapped
+- [x] Requirements to structure mapping complete
+
+### Architecture Readiness Assessment
+
+**Overall Status:** READY FOR IMPLEMENTATION (all 16 checklist items confirmed; no critical
+gaps — the open items are a deferred payment-processor choice and an unmeasured-perf risk that
+the first implementation steps are designed to close).
+
+**Confidence Level:** High — the hardest, novel risk (the renderer/layout/disclosure engine)
+is already built and spike6-validated; remaining work is conventional web-SaaS scaffolding
+around it, with the residual risk concentrated in measurement (perf) and validation (thesis),
+both explicitly sequenced first.
+
+**Key Strengths:**
+- Builds on a validated engine; the boundary keeps it framework-free and reusable.
+- Minimal, boring, low-opex stack matched to a solo-founder weekend pace.
+- Privacy/security posture (capability slugs, RLS, noindex, SAQ-A) is coherent end-to-end.
+- One source-of-truth data model with a single DB↔TS mapping seam.
+
+**Areas for Future Enhancement:** elkjs adaptive layout; sequence-diagram disclosure
+graduation; version history/diff; richer multi-diagram canvas; app-level field encryption if
+enterprise demand appears.
+
+### Implementation Handoff
+
+**AI Agent Guidelines:**
+- Follow all architectural decisions exactly as documented.
+- Use the implementation patterns consistently; obey Rule 0 (engine conformance) and the
+  `docs/architecture/05` invariants.
+- Respect project structure and boundaries; keep all DB↔TS mapping in `packages/shared`.
+- Refer to this document for all architectural questions.
+
+**First Implementation Priority:** Extract `spike6/src/` → `@mermaidweb/render` behind the
+`DiagramController` facade (no behavior change), then land the perf harness + CI gate —
+before the app shell and backend skeleton.
