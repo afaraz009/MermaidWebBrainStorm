@@ -4,8 +4,8 @@ date: 2026-05-08
 status: validated-by-spike6
 validatedDate: 2026-05-31
 relatedDocuments:
-  - _bmad-output/planning-artifacts/prd.md
-  - _bmad-output/planning-artifacts/product-brief-MermaidWeb.md
+  - docs/prd.md
+  - docs/product-brief-MermaidWeb.md
   - docs/architecture/README.md
   - spike6/SPIKE6_COMPLETE.md
 resolves:
@@ -19,7 +19,8 @@ resolves:
 > **As-built reconciliation — read before trusting the stack table / diagram below:**
 > - **Layout engine is `dagre-d3-es`** (Mermaid's *own* fork), imported in `layout.ts` / `recursive-layout.ts`. `@dagrejs/dagre` was the original and is no longer imported (comment-only). This *strengthens* the geometric-equivalence rationale — it's literally Mermaid's layout code — and the decision grew an asset the table omits: a faithful port of Mermaid v11's recursive `extractor`/`recursiveRender` cluster algorithm (`recursive-layout.ts`).
 > - **`elkjs` ("Adaptive" mode), `svg-pan-zoom`, and `remark` are NOT yet built** — still planned. As-built pan/zoom is custom (`pan.ts`); the Markdown/workspace layer is not started.
-> - **The High-Level Architecture diagram below is the *target*.** Built today: parser-adapter → IR → layout → render-model → SVG renderer, plus drag, collapse/expand, pan/zoom. Not yet built: Renderer Router, Mermaid viewer fallback, Markdown layer, command palette, minimap, and the focus/path/depth disclosure modes. Live build status: [`docs/architecture/06-from-spike-to-product.md`](../../docs/architecture/06-from-spike-to-product.md).
+> - **The High-Level Architecture diagram below is the *target*.** Built today (in spike6, on the harness): parser-adapter → IR → layout → render-model → SVG renderer, plus drag, pan/zoom, and the **full disclosure family — collapse/expand, depth slider, focus, and path** (`collapse.ts`, `depth.ts`, `focus.ts`, `path.ts`, `disclosure-overlay.ts`). These are built in the spike; the **product port is still pending**. Not yet built at all: Renderer Router, Mermaid viewer fallback, Markdown layer, command palette, and minimap. Live build status: [`docs/architecture/06-from-spike-to-product.md`](../../docs/architecture/06-from-spike-to-product.md).
+> - **"Validated by spike6" means the renderer *technology choice* (Open Decision #2), NOT the performance release gate.** The spike confirmed D1/D2/D5 on small correctness fixtures; the PRD's 200-node-smooth / 500-node-graceful / 1000-node-no-crash targets remain **unmeasured** and are carried forward as Phase-1 risk (see [`SPIKE6_COMPLETE.md`](../../spike6/SPIKE6_COMPLETE.md) §6).
 >
 > **Scope:** this doc covers the *renderer* only. The forthcoming whole-system `architecture.md` (via `bmad-create-architecture`) supersedes its **scope**; this remains the renderer ADR and a locked input to that pass.
 
@@ -67,7 +68,7 @@ Build context: solo founder, side-project pace, 3–6 months of weekends, with c
 **Why over Architecture A (Mermaid renderer + svg-pan-zoom + CSS interaction layer):**
 - **Visual ceiling.** Renderer ownership enables animated disclosure transitions (collapse easing, focus fades, path glows, depth-band crossfades) — which Architecture A constrains because mutating someone else's SVG limits animation lifecycle control.
 - **Stable dependency surface.** Mermaid parser AST is more stable than its emitted SVG. Dagre and d3-shape change slowly. Architecture A couples to Mermaid's emitted DOM (class names, group nesting) which can shift on minor-version bumps.
-- **Bundle headroom.** Drops ~800 KB gzipped vs. shipping full Mermaid; comfortably under the PRD's 350 KB initial bundle budget.
+- **Bundle headroom.** The native flowchart path ships only the Mermaid *parser* + dagre + d3-shape, not Mermaid's full renderer — keeping the critical path lean for the PRD's cold-load / time-to-interactive targets (≤1.5s first render, ≤3s TTI on a 200-node diagram). **Caveat (FR15a):** non-flowchart types *do* render via `mermaid.render`, so full Mermaid is still a product dependency — it must be **code-split and lazy-loaded** behind the Renderer Router's viewer fallback, never in the initial flowchart bundle. (The earlier "drops ~800 KB vs. full Mermaid / under a 350 KB budget" framing is retired — the current PRD specifies no fixed KB budget, only the TTI targets above.)
 - **Geometric equivalence.** Same dagre + same d3-shape `curveBasis` = visually-indistinguishable layouts vs. Mermaid for users coming from elsewhere. Not a different renderer — the same renderer, owned.
 - **Layout pluggability.** Swapping dagre for elkjs ("Adaptive" mode) becomes a one-function swap; both produce `{nodes: [{x,y,w,h}], edges: [{points}]}`.
 - **Custom node affordances.** Wave 1.3 Code Connect (binding nodes to code files) needs custom visual states that are native in an owned renderer.
@@ -88,6 +89,8 @@ Build context: solo founder, side-project pace, 3–6 months of weekends, with c
 - Defeats the upstream-improvement signal — porting future Mermaid improvements becomes manual work without context.
 
 **Operating principle:** *If you're not changing the rendering behavior, use Mermaid's renderer. If you are, build your own from primitives — never by reverse-engineering Mermaid's.*
+
+**Scope carve-out (as-built, 2026-05-31).** This decision rejects lifting Mermaid's **renderer** — its emitted SVG, class names, group nesting, and the thousands of lines of edge-case *rendering* code. It does **not** prohibit the scoped **layout-parity port** in `recursive-layout.ts`, which is explicitly blessed: it reproduces Mermaid v11's `extractor`/`recursiveRender` *layout geometry* (a bounded, well-understood algorithm), is verified against Mermaid's own internal dumps rather than guessed, and is what delivers the "geometric equivalence" rationale in Decision 2. Layout parity (where we want byte-equivalence to Mermaid) and renderer ownership (where we want to own behavior) are different axes — port the former, own the latter.
 
 ### Decision 4 — Multi-diagram-type strategy: Position 3 (Hybrid)
 
@@ -203,7 +206,7 @@ A 2–3-hour timeboxed spike validates the load-bearing assumptions before furth
 
 ## Non-Decisions / Items Explicitly Held
 
-- This session did not change any decision in the PRD other than (pending spike) Open Decision #2.
+- This session did not change any decision in the PRD other than Open Decision #2, which it provisionally resolved and spike6 has since validated (2026-05-31).
 - Performance budgets above 200 nodes (the 500/1000-node tiers from the PRD) are not eliminated — they are de-prioritized for the spike phase. The architecture above remains compatible with raising the ceiling later.
 - The disclosure family's *visual ambition* (snap states vs. animated transitions) is held — the architecture supports either, and the spike's drag result is the leading indicator for which is realistic.
 
