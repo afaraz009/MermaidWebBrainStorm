@@ -88,10 +88,18 @@ moves into the real app's render package later largely unchanged.
   structure it so bumping/configuring it later is trivial. Clicking another node
   re-focuses; Esc clears.
 
-**Path behaviour** (Step 3)
-- In path mode, click node A then node B → **shortest path** over undirected adjacency
-  (BFS) → highlight path nodes + edges, dim the rest. No path → brief no-op/indicator.
-  Esc, or a third click, resets the selection.
+**Path behaviour** (Step 3, refined in 3.1 / 3.2)
+- In path mode, click node A then node B → highlight **every node/edge on a directed route**
+  between them: reachability intersection (`reachFromS ∩ reachToT`) over directed `out`/`in`
+  built from **logical endpoints** (`fromCluster ?? from`, `toCluster ?? to`). So all parallel
+  branches light up (not one shortest path), and a whole-cluster connection lights the cluster
+  as a **lit-container waypoint**. Click order is forgiving (auto-swap S/T once). Everything
+  off-route dims.
+- **No directed route either way:** keep the source selected and lit (rest dimmed) and flash a
+  transient red `.path-no-route` cue on the clicked target — do **NOT** `clearEmphasis` (in a
+  dim-based overlay, "cleared" is visually identical to "everything is the path"). The source
+  stays set, so the next click simply retries the target.
+- Esc exits path mode; a click after a completed route starts a new selection (new source).
 
 **Click-vs-drag, pinning, mode persistence**
 - In focus/path mode a node press that stays within the click threshold = select; a real
@@ -169,7 +177,14 @@ BUILD_LOG if a step forces the issue.
 
 ---
 
-## 6. Build scope — current phase: **STEP 3.2 — Path/focus through whole clusters (lit container)**
+## 6. Build scope — current phase: **COMPLETE — disclosure family done (Steps 1 → 3.2)**
+
+> **Status:** all four modes (collapse, depth, focus, path incl. cluster waypoints) are built
+> and verified on the harness; no pending build scope. The final scope is kept below for the
+> record. Locked behaviour now lives in §2 (the authoritative contract). Next is **user
+> validation** + porting to the product package, not more harness build.
+
+### (record) STEP 3.2 — Path/focus through whole clusters (lit container)
 
 Path mode (3.1) lights all routes correctly when both endpoints are **leaves**. But an edge
 that connects to a **whole cluster** is stored against a rewritten representative leaf, with

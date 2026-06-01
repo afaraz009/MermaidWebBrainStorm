@@ -2,13 +2,15 @@
 
 [← architecture index](README.md)
 
-> **TL;DR.** Two interactions matter for the product: **drag** (pin-and-recalculate —
-> moves one node, rebuilds only its edges, resizes only its containing clusters; never
-> re-runs full layout) and **collapse/expand** (disclosure mode 1 — flips
-> `sg.collapsed` and re-runs `layout()` on a derived IR). Edges have three drop-time
-> modes — **side-aware** (default), **dagre** (re-layout), and **A*** (optional
-> orthogonal grid routing, off by default). A pan/zoom layer, an edge-drawing
-> "connect" tool, and a right-click context menu round it out.
+> **TL;DR.** The interactions that matter: **drag** (pin-and-recalculate — moves one node,
+> rebuilds only its edges, never re-runs full layout) and the **disclosure family** —
+> **collapse/expand**, the **depth slider** (folds by nesting depth via the collapse path),
+> and **focus** / **path** (pure SVG-class overlays that isolate a node's neighbourhood or
+> light every directed route between two nodes — no relayout). A `disclosureSettings.mode`
+> singleton keeps focus/path mutually exclusive; a shared `disclosure-overlay.ts` does
+> adjacency + tri-state emphasis (on-route clusters render as lit containers). Edges also
+> have three drop-time modes — **side-aware** (default), **dagre**, **A*** (optional). A
+> pan/zoom layer, a "connect" tool, and a context menu round it out.
 
 ---
 
@@ -81,6 +83,47 @@ mechanics of the derivation are in [01](01-data-pipeline.md) §3.
 This is the proof that the disclosure family can ride on this substrate: the hardest
 structural case (collapsing a cluster whose only child is another cluster) already works
 via the surrogate-reparenting in `effective-ir.ts`.
+
+---
+
+## 2A. The disclosure family — depth, focus, path (`depth.ts`, `focus.ts`, `path.ts`, `disclosure-overlay.ts`)
+
+The other three disclosure modes (collapse is §2) sit on a tiny shared layer. **Focus and
+path are pure overlays — they never call `layout()` or re-render; they only toggle SVG
+classes.** A `disclosureSettings.mode` singleton (`'default' | 'focus' | 'path'`) makes the
+modes mutually exclusive; a toolbar button drives each.
+
+**Shared primitive — `disclosure-overlay.ts`.** `buildAdjacency(ir)` builds undirected
+`neighbors` + directed `out`/`in` over the *effective* IR using **logical endpoints**
+(`fromCluster ?? from`, `toCluster ?? to`) — so an edge wired to a whole cluster makes the
+cluster a graph node, i.e. a route **waypoint**. `setEmphasis(svg, ir, activeNodeIds,
+activeEdgeKeys)` applies a **tri-state** to every node/edge/cluster — **active** (on the
+selection), **neutral** (inside an active cluster, or a cluster that contains the
+selection), or **dimmed** (everything else); `clearEmphasis(svg)` resets. An on-route
+cluster thus renders as a **lit container**: border accented, contents legible, off-route
+graph dimmed.
+
+**Depth slider — `depth.ts` + a toolbar range.** `computeDepths(ir)` / `maxDepth(ir)` give
+each subgraph's nesting depth; the slider sets `sg.collapsed = (depth > N)` for `N` in
+`0…maxDepth` and re-runs the **existing collapse path** (`rerenderWithCollapse`). `N = 0`
+folds even single-level clusters; `N = maxDepth` is fully expanded. No new layout code — it
+drives the same machinery as §2.
+
+**Focus — `focus.ts`.** In focus mode, clicking a node emphasises it + its 1-hop neighbours
+(`const HOPS = 1`) + connecting edges; Esc exits, empty-click clears but stays in mode. A
+node wired to a cluster focuses the cluster (logical adjacency).
+
+**Path — `path.ts`.** Two clicks pick source/target; it lights **every node/edge on a
+directed route** between them via reachability intersection (`reachFromS ∩ reachToT` over
+`out`/`in`), capturing all parallel branches — not a single shortest path. Click order is
+forgiving (auto-swap). No directed route either way → the source stays lit and the target
+flashes a red `.path-no-route` cue (rather than clearing the whole graph).
+
+**Interaction hygiene.** Select-clicks use the `collapse.ts` click-vs-drag threshold (a real
+drag still drags) and **don't pin** the node (pin only on an actual move — see §1 / `drag.ts`),
+so combining a mode with the depth slider can't silently force the flat layout engine.
+`collapse.ts` suppresses collapse/expand while a mode is active. Emphasis is DOM-class only,
+so any re-render wipes it; the mode toggle persists, the selection resets.
 
 ---
 

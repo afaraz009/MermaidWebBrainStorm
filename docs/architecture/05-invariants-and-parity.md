@@ -23,7 +23,9 @@ comment above `reanchorClusterEdges` (`layout.ts:245`).
 **Why / what breaks.** They drive: the `externalConnections` classification (a false
 negative re-routes a cluster edge wrongly — e.g. cyc3's Halt drifts off its cluster);
 the edge clip target (falls back to the leaf outline); the drag preview (line snaps to
-the leaf); and A* trim (path ends on the leaf, not the border).
+the leaf); A* trim (path ends on the leaf, not the border); and the **disclosure overlay's
+logical-endpoint adjacency** (`fromCluster ?? from`), which is what lets focus/path treat a
+whole-cluster edge as a route waypoint (lit container) instead of an arbitrary leaf.
 **Rule.** Any pass that rewrites `e.from`/`e.to` must **preserve or explicitly clear**
 these. Known maintained sites: `effective-ir.ts:131` (clears on the remapped side only).
 Add new sites to that comment block.
