@@ -41,6 +41,19 @@
     g[data-subgraph-id].connect-target > rect {
       stroke: #10b981; stroke-width: 3; fill: rgba(16,185,129,0.15);
     }
+    /* Disclosure overlay (focus + path modes). */
+    .disclosure-dim { opacity: 0.1; transition: opacity 0.15s ease; }
+    /* Accent stroke for active edges — applies to focus neighbours and path edges alike. */
+    .disclosure-active .edge-path,
+    .disclosure-active .edge-arrow-line { stroke: #4a6cf7; stroke-width: 2.5; }
+    /* Transient "no path" cue (path mode): flash the clicked target red over the
+       dim. Defined after .disclosure-dim so opacity:1 wins by source order. */
+    .path-no-route { opacity: 1; }
+    .path-no-route > rect,
+    .path-no-route > circle,
+    .path-no-route > ellipse,
+    .path-no-route > polygon,
+    .path-no-route > path { stroke: #e0395d; stroke-width: 3; transition: stroke 0.15s ease; }
   </style>
 </head>
 <body>
@@ -49,6 +62,8 @@
     <button id="reset" class="btn">Reset Layout</button>
     <button id="collapseAll" class="btn">Collapse All</button>
     <button id="expandAll" class="btn">Expand All</button>
+    <button id="toggleFocus" class="btn">Focus</button>
+    <button id="togglePath" class="btn">Path</button>
     <button id="toggleGrid" class="btn">Show A* Grid</button>
     <button id="toggleAstar" class="btn">Show A* Feature</button>
     <button id="toggleSeparation" class="btn">Separation: Off</button>

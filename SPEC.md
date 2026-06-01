@@ -93,10 +93,31 @@ moves into the real app's render package later largely unchanged.
   (BFS) → highlight path nodes + edges, dim the rest. No path → brief no-op/indicator.
   Esc, or a third click, resets the selection.
 
-**Click-vs-drag**
+**Click-vs-drag, pinning, mode persistence**
 - In focus/path mode a node press that stays within the click threshold = select; a real
   drag still drags (reuse the `CLICK_THRESHOLD_PX` pattern from `collapse.ts`). Left-click
   collapse-on-subgraph is suppressed while in focus/path mode.
+- A **select-click never pins** the node — pin only on an actual move. (A zero-distance
+  click that pins would force the flat layout engine on the next `layout()`, silently
+  degrading recursive parity when focus/path is combined with the depth slider.)
+- A disclosure mode (focus/path) **persists across re-renders** (button stays lit) while
+  the emphasis clears with the rebuilt DOM — re-click to re-emphasize.
+- In focus/path mode, clicking a **surrogate** treats it as an ordinary node
+  (focus/select it), not expand.
+- Focus and Path are **mutually exclusive**: both toggles write the single
+  `disclosureSettings.mode`; entering one clears the other's emphasis and button highlight.
+
+**Cluster-anchored edges & cluster waypoints**
+- Path and focus build adjacency from **logical endpoints** — `fromCluster ?? from` and
+  `toCluster ?? to` on the *effective* IR — so an edge that connects to a whole cluster
+  (e.g. `source --> Processing` in `fixture_rl_chain`) makes the (expanded) cluster a
+  first-class **waypoint** on the route, not an arbitrary representative leaf.
+- A cluster that is a waypoint renders as a **lit container**: its border accented, its
+  contents at NORMAL visibility, everything off-route dimmed. Tri-state per element:
+  **active** (on route) / **neutral** (inside an on-route cluster, or a cluster that
+  contains the route) / **dimmed** (off route).
+- A **collapsed** cluster is already a surrogate node in the effective IR — it participates
+  as an ordinary node; no special handling.
 
 **Build health**
 - `cd spike6 && ./node_modules/.bin/tsc --noEmit` stays silent; `npx vite build` passes.
@@ -148,41 +169,78 @@ BUILD_LOG if a step forces the issue.
 
 ---
 
-## 6. Build scope — current phase: **STEP 1.1 — Depth slider: reach single-level clusters**
+## 6. Build scope — current phase: **STEP 3.2 — Path/focus through whole clusters (lit container)**
 
-Step 1 (the depth slider) is built and verified. This round is a small refinement so the
-slider can also collapse **top-level / single-level clusters**. On fixtures like
-`fixture.mmd` and `fixture_crosscluster` every cluster is depth 1, so the original
-`min = 1` left the slider disabled and those clusters uncollapsible. Change **only** the
-depth slider; do **not** start focus / path / overlay work.
+Path mode (3.1) lights all routes correctly when both endpoints are **leaves**. But an edge
+that connects to a **whole cluster** is stored against a rewritten representative leaf, with
+the real cluster id in `fromCluster`/`toCluster`. So a route like `source → Processing →
+sink` (`fixture_rl_chain`) or `request → API_Layer → response` (`fixture_cyclic_nested_2`)
+currently threads through an arbitrary internal leaf instead of treating the cluster as the
+waypoint.
 
-1. **Range** — change the `#cfgDepth` slider `min` from `1` to **`0`**. Keep
-   `max = maxDepth(ir)` and `default = max`. Keep the formula
-   `collapsed = (depthOf(sg) > N)`. (Full locked semantics in §2 "Depth slider".)
-2. **Enable condition** — enable the slider whenever `maxDepth(ir) >= 1` (graph has at
-   least one subgraph). Disable ONLY when `maxDepth(ir) === 0` (no subgraphs). This
-   replaces Step 1's "disable when max ≤ 1".
-3. **Label** — the value label shows the current `N` (`0 … maxDepth`). At `N = 0` the
-   whole diagram folds to top-level surrogates; at `N = maxDepth` it is fully expanded.
-4. **Verify** — on `fixture.mmd` and `fixture_crosscluster` (single-level clusters:
-   confirm `N = 0` collapses `authentication` / `payment_system` / etc. to surrogates and
-   `N = 1` restores them), plus `fixture_nested` and `fixture_deep_5level` (multi-level
-   still steps cleanly). `tsc --noEmit` clean; `vite build` passes.
-5. **Log** — append a BUILD_LOG entry; note any assumptions/questions.
+Fix: build the route graph from **logical endpoints** so the (expanded) cluster becomes a
+waypoint, and render an on-route cluster as a **lit container** (locked in §2
+"Cluster-anchored edges & cluster waypoints"). This also improves focus (same primitive).
 
-**Definition of done (1.1):** the depth slider is enabled on any clustered graph and, at
-its low end (`N = 0`), folds even single-level top-level clusters into surrogates, with no
-layout / parity changes and a clean type-check.
+### 1. Adjacency on logical endpoints — `disclosure-overlay.ts buildAdjacency`
+- For each effective edge use `lf = e.fromCluster ?? e.from` and `lt = e.toCluster ?? e.to`
+  as the graph endpoints when building `out`, `in`, and `neighbors`. Leaf↔leaf edges are
+  unchanged; only whole-cluster edges now point at the cluster id, so cluster ids appear as
+  graph nodes. `e.id` stays the edge key for emphasis.
 
-> **Resolutions for the Step-1 open questions** (so the build agent has context without
-> reading BUILD_LOG):
-> - **OQ1** (prose vs formula) — RESOLVED: adopt `min = 0` with the existing `> N`
->   formula (this round). §2 and the prose are now consistent.
-> - **OQ2** (max derived on load only) — CONFIRMED correct: `our-renderer.html` selects
->   the fixture by URL param with no in-page switcher, and no later step needs the max
->   re-derived without a reload.
-> - **OQ3** (slider vs manual-collapse drift) — CONFIRMED: keep the no-sync default (§3);
->   the Step-2 mode manager will not reset the slider.
-> - **Assumption 1** (wire `input` only, not `change`) — ACCEPTED, keep as built.
-> - **Assumption 2** (dedicated `#depthPanel`) — ACCEPTED, keep as built.
-> - **Assumption 3** (disable when max ≤ 1) — SUPERSEDED by item 2 above.
+### 2. Reachability may include cluster ids — `path.ts` / `focus.ts`
+- Path: unchanged 3.1 algorithm, now over the logical graph — `pathNodes = reachFromS ∩
+  reachToT` (may include cluster ids); `pathEdges = e.id` for every effective edge with
+  `lf ∈ reachFromS && lt ∈ reachToT`. Pass both to `setEmphasis`.
+- Focus: neighbours now come from the logical `neighbors`, so a node wired to a cluster
+  focuses the cluster. No other change.
+
+### 3. Tri-state emphasis with cluster awareness — `setEmphasis`
+- Change signature to take the effective IR: `setEmphasis(svg, ir, activeNodeIds,
+  activeEdgeKeys)`. `activeNodeIds` may contain leaf **and** cluster ids. Implement as three
+  passes:
+  1. **Dim all** — add `.disclosure-dim` to every `[data-node-id]`, `[data-edge-key]`,
+     `[data-subgraph-id]`.
+  2. **Un-dim the neutral set** (remove `.disclosure-dim`, no accent):
+     - every leaf that is a **descendant of an active cluster**;
+     - every edge whose BOTH logical endpoints are descendants of the **same** active
+       cluster (an internal edge of an on-route cluster);
+     - every cluster that is a **descendant of an active cluster** OR an **ancestor of any
+       active element** (the containing boxes of the route stay visible).
+  3. **Accent the active set** (remove `.disclosure-dim`, add `.disclosure-active`): active
+     `[data-node-id]` leaves, active `[data-edge-key]` edges, active `[data-subgraph-id]`
+     clusters.
+- `clearEmphasis` clears all three element types (incl. `[data-subgraph-id]`).
+- Containment (descendants/ancestors) comes from `ir.subgraphs`; compute once per call. Keep
+  the primitive pure: DOM + read-only `ir` in, classes out.
+
+### CSS (add to `our-renderer.html <style>`)
+- Active cluster border: `[data-subgraph-id].disclosure-active > rect { stroke:#4a6cf7;
+  stroke-width:2.5; }`.
+- Confirm `.disclosure-dim` (opacity 0.1) reads acceptably on `[data-subgraph-id]` groups;
+  soften the selector if a dimmed cluster rect looks harsh.
+
+### Constraints
+- Pure SVG-class mutation; `ir` is read-only. No `layout()`/`renderFull`/`rerenderWithCollapse`;
+  no layout/parser/parity/cluster-bbox changes.
+
+### Verify
+- `fixture_rl_chain`: Path → `source` then `sink` → route lights and **`Processing` shows as
+  a lit container** (border accented, internals at normal visibility), off-route dimmed.
+- `fixture_cyclic_nested_2`: `request` then `response` → `API_Layer` lights as the connecting
+  container.
+- 3.1 leaf↔leaf cases (`fixture.mmd` both-branches) still correct; focus still works; a
+  collapsed cluster on a route lights as a single surrogate node. `tsc --noEmit` clean;
+  `vite build` passes.
+
+### Log
+- Append a BUILD_LOG entry: what changed, files touched, assumptions, open questions.
+
+**Definition of done (3.2):** two leaves connected through a cluster light the cluster as a
+waypoint (lit container) with the off-route graph dimmed; leaf↔leaf routes and focus
+unchanged; no relayout; type-check clean.
+
+> **Known limitation (note, do NOT build):** selecting a node that lives *inside* such a
+> cluster as a path endpoint is not specially handled — the cluster waypoint and its
+> internal leaves are distinct graph nodes (no containment bridging). Flag if it comes up;
+> out of scope this round.

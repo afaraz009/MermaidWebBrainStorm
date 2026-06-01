@@ -12,6 +12,8 @@ import { attachPan, getPan, getZoom, setZoom, setPan } from './pan.js';
 import { attachContextMenu } from './contextMenuWiring.js';
 import { attachConnect, hideHandles } from './connect.js';
 import { computeDepths, maxDepth } from './depth.js';
+import { attachFocus } from './focus.js';
+import { attachPath } from './path.js';
 import type { IR } from './types.js';
 
 // `ir` is the source of truth (with `sg.collapsed` flags + pinned node
@@ -21,6 +23,8 @@ import type { IR } from './types.js';
 let ir: IR;
 let currentEff: IR;
 let detachDrag: (() => void) | null = null;
+let detachFocus: (() => void) | null = null;
+let detachPath: (() => void) | null = null;
 // Per-subgraph nesting depth (root = 1), computed once from the source IR on
 // load. The depth slider reads this to decide which subgraphs to collapse.
 // Structural, so it never changes after parse (collapse only flips flags).
@@ -35,6 +39,14 @@ function readFixtureName(): string {
 function reattach(): void {
   if (detachDrag) detachDrag();
   detachDrag = attachDrag(svg, currentEff, svg);
+  // Focus mode's overlay listeners + selection are closure-local, so re-attach
+  // them against the freshly rebuilt DOM. The mode itself lives in
+  // `disclosureSettings` and persists; any prior emphasis is gone with the old
+  // DOM (SPEC §2: overlays don't survive a re-render).
+  if (detachFocus) detachFocus();
+  detachFocus = attachFocus(svg, () => currentEff);
+  if (detachPath) detachPath();
+  detachPath = attachPath(svg, () => currentEff);
   // Any pending connect-handle session is invalidated by a full re-render
   // since the node DOM was rebuilt.
   hideHandles();
