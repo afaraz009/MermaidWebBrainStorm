@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Live Editor — paste Mermaid, see our render</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { height: 100%; }
+    body { margin: 0; font-family: sans-serif; background: #fff; display: flex; }
+
+    /* ── Left pane: source editor ───────────────────────────────────────── */
+    .editor-pane {
+      width: 420px; min-width: 280px; flex-shrink: 0;
+      display: flex; flex-direction: column;
+      border-right: 1px solid #e2e6ee; padding: 12px; gap: 8px;
+      background: #fafbfd;
+    }
+    .editor-pane h2 { margin: 0; font-size: 13px; color: #666; }
+    .editor-pane .hint { font-size: 11px; color: #8a94a6; margin: 0; }
+    #source {
+      flex: 1; min-height: 0; resize: none;
+      font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      font-size: 13px; line-height: 1.5;
+      padding: 10px; border: 1px solid #c3cad8; border-radius: 6px;
+      background: #fff; color: #1a2942; tab-size: 2;
+    }
+    #renderBtn {
+      padding: 8px 14px; font-size: 13px; font-weight: 600;
+      border: 1px solid #4a6cf7; border-radius: 4px;
+      background: #4a6cf7; color: #fff; cursor: pointer;
+    }
+    #renderBtn:hover { background: #3a5ce0; }
+
+    /* ── Right pane: canvas + all interactive controls ──────────────────── */
+    .canvas-pane { flex: 1; min-width: 0; overflow: auto; padding: 16px; }
+    .controls { margin-bottom: 12px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+    .btn {
+      padding: 6px 14px; font-size: 13px;
+      border: 1px solid #4a6cf7; border-radius: 4px;
+      background: white; color: #4a6cf7; cursor: pointer;
+    }
+    .btn:hover { background: #4a6cf7; color: white; }
+    .btn.on { background: #4a6cf7; color: white; }
+    .panel {
+      display: flex; gap: 16px; flex-wrap: wrap; align-items: center;
+      margin-bottom: 12px; padding: 10px 12px;
+      background: #fafbfd; border: 1px solid #e2e6ee; border-radius: 6px;
+      font-size: 12px; color: #1a2942;
+    }
+    .panel label { display: inline-flex; gap: 6px; align-items: center; }
+    .panel select { font: inherit; padding: 2px 6px; border-radius: 4px; border: 1px solid #c3cad8; background: white; }
+    .panel input[type=range] { width: 120px; vertical-align: middle; }
+    .panel .val { color: #4a6cf7; font-variant-numeric: tabular-nums; min-width: 26px; display: inline-block; text-align: right; }
+    .legend { display: inline-flex; gap: 10px; align-items: center; margin-left: auto; font-size: 11px; color: #5a6478; }
+    .legend .sw { display: inline-block; width: 11px; height: 11px; border: 1px solid rgba(0,0,0,0.15); vertical-align: middle; margin-right: 3px; }
+
+    #errorBar {
+      display: none; margin-bottom: 12px; padding: 8px 12px;
+      background: #fdecef; border: 1px solid #e0395d; border-radius: 6px;
+      color: #b0203f; font-size: 12px; font-family: ui-monospace, Menlo, Consolas, monospace;
+      white-space: pre-wrap;
+    }
+
+    #mount { display: block; overflow: visible; }
+    .sg-header:hover { fill: #1a1a2e; text-decoration: underline; }
+    .subgraph-group:hover > rect { fill: #e8edff; fill-opacity: 0.4; stroke: #4a6cf7; }
+    .subgraph-group:hover > .sg-header { fill: #1a1a2e; }
+    [data-edge-key] { cursor: pointer; }
+    [data-edge-key]:hover .edge-path { stroke: #4a6cf7; stroke-width: 2.5; }
+    [data-edge-key]:hover .edge-arrow-line { stroke: #4a6cf7; stroke-width: 2.5; }
+    g[data-node-id].connect-target > rect,
+    g[data-subgraph-id].connect-target > rect {
+      stroke: #10b981; stroke-width: 3; fill: rgba(16,185,129,0.15);
+    }
+    /* Disclosure overlay (focus + path modes). */
+    .disclosure-dim { opacity: 0.1; transition: opacity 0.15s ease; }
+    .disclosure-active .edge-path,
+    .disclosure-active .edge-arrow-line { stroke: #4a6cf7; stroke-width: 2.5; }
+    [data-subgraph-id].disclosure-active > rect { stroke: #4a6cf7; stroke-width: 2.5; }
+    .path-no-route { opacity: 1; }
+    .path-no-route > rect,
+    .path-no-route > circle,
+    .path-no-route > ellipse,
+    .path-no-route > polygon,
+    .path-no-route > path { stroke: #e0395d; stroke-width: 3; transition: stroke 0.15s ease; }
+  </style>
+  <script type="module" crossorigin src="/assets/editor-TVaQBZRl.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/modulepreload-polyfill-BxR_cmXS.js">
+  <link rel="modulepreload" crossorigin href="/assets/preload-helper-DzyYoeor.js">
+  <link rel="modulepreload" crossorigin href="/assets/_baseFor-BuEN-uP3.js">
+  <link rel="modulepreload" crossorigin href="/assets/basis-CKOliifv.js">
+  <link rel="modulepreload" crossorigin href="/assets/path-D_erF8RO.js">
+  <link rel="modulepreload" crossorigin href="/assets/array-9GQRnUsD.js">
+  <link rel="modulepreload" crossorigin href="/assets/line-bUome-pQ.js">
+  <link rel="modulepreload" crossorigin href="/assets/isEmpty-BI2NhQVJ.js">
+  <link rel="modulepreload" crossorigin href="/assets/_baseUniq-Dm6A69ym.js">
+  <link rel="modulepreload" crossorigin href="/assets/graphlib-cnILPK_C.js">
+  <link rel="modulepreload" crossorigin href="/assets/min-B9_uqKpX.js">
+  <link rel="modulepreload" crossorigin href="/assets/dagre-DKZ6ytec.js">
+  <link rel="modulepreload" crossorigin href="/assets/path-lFnwEORi.js">
+</head>
+<body>
+  <div class="editor-pane">
+    <h2>Mermaid source</h2>
+    <p class="hint">Edit on the left — renders on the right (auto after ~0.4s, or click Render). All interactions work on the diagram.</p>
+    <textarea id="source" spellcheck="false">flowchart TD
+
+    Boot([Boot]) --> ControlPlane
+
+    %% --- Cycle A: ControlPlane <-> DataPlane (depth 1) ---
+    subgraph ControlPlane [Control Plane]
+        direction TB
+        CP_Scheduler{Scheduler}
+        CP_Dispatcher[Dispatcher]
+        CP_Scheduler --> CP_Dispatcher
+    end
+
+    subgraph DataPlane [Data Plane]
+        direction TB
+        DP_Worker[[Worker]]
+        DP_Reporter[Reporter]
+        DP_Worker --> DP_Reporter
+    end
+
+    CP_Dispatcher --> DP_Worker
+    DP_Reporter -.->|status| CP_Scheduler
+
+    %% --- Cycle B: ProdA <-> ProdB inside Productivity (depth 3) ---
+    subgraph Productivity [Productivity Subsystem]
+        direction TB
+        subgraph Apps [Apps]
+            direction TB
+            subgraph ProdA [Editor]
+                direction TB
+                Ed_Compose[Compose]
+                Ed_Save[(Save)]
+                Ed_Compose --> Ed_Save
+            end
+            subgraph ProdB [Reviewer]
+                direction TB
+                Rev_Open[Open Doc]
+                Rev_Comment[/Comment/]
+                Rev_Open --> Rev_Comment
+            end
+            Ed_Save --> Rev_Open
+            Rev_Comment -.->|edit| Ed_Compose
+        end
+    end
+
+    DP_Reporter --> Productivity
+    Productivity --> Halt([Halt])
+</textarea>
+    <button id="renderBtn">Render ▶</button>
+  </div>
+
+  <div class="canvas-pane">
+    <div class="controls">
+      <button id="reset" class="btn">Reset Layout</button>
+      <button id="collapseAll" class="btn">Collapse All</button>
+      <button id="expandAll" class="btn">Expand All</button>
+      <button id="toggleFocus" class="btn">Focus</button>
+      <button id="togglePath" class="btn">Path</button>
+      <button id="toggleGrid" class="btn">Show A* Grid</button>
+      <button id="toggleAstar" class="btn">Show A* Feature</button>
+      <button id="toggleSeparation" class="btn">Separation: Off</button>
+      <button id="toggleEdgeMode" class="btn">Edges: Side-aware</button>
+    </div>
+    <div class="panel" id="depthPanel">
+      <label>Depth
+        <input type="range" id="cfgDepth" min="0" max="1" value="1" step="1">
+        <span class="val" id="cfgDepthVal">1</span>
+      </label>
+      <span class="legend" style="margin-left:0;">show down to depth N, collapse deeper</span>
+    </div>
+    <div class="panel" id="astarPanel">
+      <label>Cell size
+        <input type="range" id="cfgCellSize" min="6" max="30" value="10" step="1">
+        <span class="val" id="cfgCellSizeVal">10</span>px
+      </label>
+      <label>Connectivity
+        <select id="cfgConnectivity">
+          <option value="4" selected>4-way</option>
+          <option value="8">8-way</option>
+        </select>
+      </label>
+      <label>Corner cutting
+        <select id="cfgCornerCut">
+          <option value="0" selected>Blocked</option>
+          <option value="1">Allowed</option>
+        </select>
+      </label>
+      <label>Heuristic
+        <select id="cfgHeuristic">
+          <option value="manhattan" selected>Manhattan</option>
+          <option value="octile">Octile</option>
+          <option value="euclidean">Euclidean</option>
+          <option value="chebyshev">Chebyshev</option>
+          <option value="zero">Zero (Dijkstra)</option>
+        </select>
+      </label>
+      <span class="legend">
+        <span><span class="sw" style="background:#e0395d"></span>obstacle</span>
+        <span><span class="sw" style="background:#9ab3e6"></span>closed</span>
+        <span><span class="sw" style="background:#2ec27e"></span>open</span>
+      </span>
+    </div>
+    <div id="errorBar"></div>
+    <svg id="mount" xmlns="http://www.w3.org/2000/svg"></svg>
+  </div>
+
+</body>
+</html>

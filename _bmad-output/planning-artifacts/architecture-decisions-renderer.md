@@ -1,19 +1,31 @@
 ---
 session: Renderer-research
 date: 2026-05-08
-status: decisions-pending-spike-validation
+status: validated-by-spike6
+validatedDate: 2026-05-31
 relatedDocuments:
   - _bmad-output/planning-artifacts/prd.md
   - _bmad-output/planning-artifacts/product-brief-MermaidWeb.md
+  - docs/architecture/README.md
+  - spike6/SPIKE6_COMPLETE.md
 resolves:
-  - PRD Open Decision #2 (Renderer technology) — pending spike confirmation
+  - PRD Open Decision #2 (Renderer technology) — RESOLVED, validated by spike6 (2026-05-31)
 ---
 
 # Architecture Decisions — Rendering Pipeline
 
+> **Status — validated by spike6 (2026-05-31).** Decisions **D1 (SVG)**, **D2 (parser-only + dagre + d3-shape)**, and **D5 (pin-and-recalculate drag)** were *confirmed* by the spike, not changed. This document is preserved as the **decision record** (the *why* + rejected alternatives); the **as-built** structure lives in [`docs/architecture/`](../../docs/architecture/README.md) and the spike closure in [`spike6/SPIKE6_COMPLETE.md`](../../spike6/SPIKE6_COMPLETE.md).
+>
+> **As-built reconciliation — read before trusting the stack table / diagram below:**
+> - **Layout engine is `dagre-d3-es`** (Mermaid's *own* fork), imported in `layout.ts` / `recursive-layout.ts`. `@dagrejs/dagre` was the original and is no longer imported (comment-only). This *strengthens* the geometric-equivalence rationale — it's literally Mermaid's layout code — and the decision grew an asset the table omits: a faithful port of Mermaid v11's recursive `extractor`/`recursiveRender` cluster algorithm (`recursive-layout.ts`).
+> - **`elkjs` ("Adaptive" mode), `svg-pan-zoom`, and `remark` are NOT yet built** — still planned. As-built pan/zoom is custom (`pan.ts`); the Markdown/workspace layer is not started.
+> - **The High-Level Architecture diagram below is the *target*.** Built today: parser-adapter → IR → layout → render-model → SVG renderer, plus drag, collapse/expand, pan/zoom. Not yet built: Renderer Router, Mermaid viewer fallback, Markdown layer, command palette, minimap, and the focus/path/depth disclosure modes. Live build status: [`docs/architecture/06-from-spike-to-product.md`](../../docs/architecture/06-from-spike-to-product.md).
+>
+> **Scope:** this doc covers the *renderer* only. The forthcoming whole-system `architecture.md` (via `bmad-create-architecture`) supersedes its **scope**; this remains the renderer ADR and a locked input to that pass.
+
 ## Purpose
 
-Captures the architecture decisions made during the renderer-research session for MermaidWeb. Resolves (pending spike validation) PRD Open Decision #2: *"Renderer technology (SVG / Canvas / WebGL) — decided by a 1–2-weekend architecture spike."*
+Captures the architecture decisions made during the renderer-research session for MermaidWeb. Resolves (validated by spike6, 2026-05-31) PRD Open Decision #2: *"Renderer technology (SVG / Canvas / WebGL) — decided by a 1–2-weekend architecture spike."*
 
 ## Context Summary
 
@@ -47,10 +59,10 @@ Build context: solo founder, side-project pace, 3–6 months of weekends, with c
 | Library | Role |
 |---|---|
 | `mermaid` | **Parser only.** Used to parse Mermaid syntax into AST. Never used for rendering in the native pipeline. |
-| `dagre` (`@dagrejs/dagre`) | Graph layout engine. The same library Mermaid uses internally — geometric equivalence to Mermaid's output. |
+| `dagre-d3-es` (Mermaid's fork) | Graph layout engine — Mermaid's *own* dagre fork, imported in `layout.ts` / `recursive-layout.ts` for literal geometric equivalence. (`@dagrejs/dagre` was the original; swapped during the spike, no longer imported.) A faithful port of Mermaid's recursive cluster `extractor` is layered on top in `recursive-layout.ts`. |
 | `d3-shape` (`curveBasis`) | Edge curve generation. The same function Mermaid uses for edge paths. |
 | `d3-path` | Companion to d3-shape for SVG path construction. |
-| `elkjs` | Alternative layout engine for an "Adaptive" mode. Lazy-loaded; does not affect initial bundle. |
+| `elkjs` *(planned — not yet built)* | Intended alternative layout engine for an "Adaptive" mode. Lazy-loaded; does not affect initial bundle. Not yet installed or wired. |
 
 **Why over Architecture A (Mermaid renderer + svg-pan-zoom + CSS interaction layer):**
 - **Visual ceiling.** Renderer ownership enables animated disclosure transitions (collapse easing, focus fades, path glows, depth-band crossfades) — which Architecture A constrains because mutating someone else's SVG limits animation lifecycle control.
@@ -153,6 +165,8 @@ Mermaid Viewer (non-flowchart):
 **Key architectural property:** the Renderer Router is the single dispatch point. As diagram types graduate from viewer-only to native rendering (sequence diagrams the most likely first candidate post-launch), they move via this switch — not via a refactor.
 
 ## Validation Plan
+
+> **Executed as spike6 — passed (2026-05-31).** Preserved as written; the spike went well beyond it (full Mermaid-internals layout parity). Outcome: [`spike6/SPIKE6_COMPLETE.md`](../../spike6/SPIKE6_COMPLETE.md).
 
 A 2–3-hour timeboxed spike validates the load-bearing assumptions before further build:
 
