@@ -9,6 +9,7 @@ export default defineConfig({
       input: {
         index: 'index.html',
         ourRenderer: 'our-renderer.html',
+        editor: 'editor.html',
         reference: 'mermaid-reference.html',
       },
     },
