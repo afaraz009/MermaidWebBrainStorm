@@ -123,11 +123,15 @@ async function main() {
 
 // Depth slider: drives `sg.collapsed` from each subgraph's nesting depth, then
 // re-renders through the EXISTING collapse path (`rerenderWithCollapse`). No new
-// layout or render code — it reuses the collapse machinery. Semantics: "show
-// down to depth N, collapse deeper" → for every subgraph, collapsed = depth > N.
-// The slider's max is the loaded fixture's deepest nesting level, and it starts
-// at max so nothing is collapsed on load. A graph with no subgraphs (max 0) or
-// only top-level ones (max 1) leaves the slider at min=max=1 with nothing to do.
+// layout or render code — it reuses the collapse machinery. Semantics (SPEC §2
+// "Depth slider"): "reveal N levels of nesting" → for every subgraph,
+// collapsed = depthOf(sg) > N. Range is 0 … maxDepth, default maxDepth:
+//   • N = maxDepth → nothing collapsed (fully expanded on load).
+//   • N = 1        → only top-level clusters open; deeper levels fold to surrogates.
+//   • N = 0        → EVERY cluster folds to a top-level surrogate, including
+//                    single-level / top-level clusters (the case min=1 couldn't reach).
+// Enabled whenever the graph has ≥1 subgraph (maxDepth ≥ 1); disabled only when
+// there are no subgraphs at all (maxDepth 0), where there is nothing to fold.
 //
 // Known limitation (SPEC §3): the slider WRITES flags but does not re-sync when
 // the user manually collapses/expands a cluster or hits Collapse All / Expand
@@ -138,11 +142,11 @@ function initDepthSlider(): void {
   if (!depthEl) return;
 
   depths = computeDepths(ir);
-  const max = Math.max(1, maxDepth(ir));
-  depthEl.min = '1';
-  depthEl.max = String(max);
+  const max = maxDepth(ir);
+  depthEl.min = '0';
+  depthEl.max = String(Math.max(0, max));
   depthEl.value = String(max);
-  depthEl.disabled = max <= 1;
+  depthEl.disabled = max < 1;
   if (depthValEl) depthValEl.textContent = String(max);
 
   function applyDepth(): void {

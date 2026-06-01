@@ -52,11 +52,19 @@ moves into the real app's render package later largely unchanged.
 - **Any full re-render** (fixture switch, collapse, drag-drop, reset) **clears overlay
   state** — overlays are visual-only and must not survive a DOM rebuild.
 
-**Depth slider** (Step 1)
+**Depth slider** (Step 1, refined in 1.1)
 - Drives `sg.collapsed` from nesting depth, then calls the existing
   `rerenderWithCollapse()`. **No new layout or render code** — it reuses the collapse
-  machinery. Semantics: "show down to depth N, collapse deeper" → for every subgraph,
-  `collapsed = (depth > N)`.
+  machinery.
+- **Range `0 … maxDepth`, default `maxDepth`** (fully expanded on load). Formula
+  `collapsed = (depthOf(sg) > N)`. Reading: "reveal N levels of nesting."
+  - `N = maxDepth` → nothing collapsed.
+  - `N = 1` → only top-level clusters open; deeper levels folded to surrogates.
+  - `N = 0` → **every** cluster folded to a top-level surrogate — including
+    single-level / top-level clusters (e.g. `authentication`, `payment_system` in
+    `fixture.mmd`). This is the case the original `min = 1` could not reach.
+- **Enabled whenever the graph has ≥ 1 subgraph** (`maxDepth ≥ 1`). Disabled only when
+  there are no subgraphs at all (`maxDepth = 0`), where there is nothing to fold.
 
 **Focus & path are PURE OVERLAYS**
 - They set **opacity / highlight via attribute mutation** on the *existing* SVG. They
@@ -103,7 +111,9 @@ BUILD_LOG if a step forces the issue.
 - **Focus hop-count:** 1-hop vs full connected-component vs configurable. **Default: 1-hop.**
 - **Depth slider vs manual collapse sync:** should the slider re-sync when the user
   manually collapses/expands a cluster? **Default: no** — the slider writes flags; manual
-  collapse may diverge; document as a known limitation, don't over-engineer.
+  collapse may diverge; document as a known limitation, don't over-engineer. _(Confirmed
+  after Step 1: keep no-sync; the Step-2 mode manager will NOT reset the slider. Revisit
+  only if it confuses beta users.)_
 - **Friends-beta surface:** the harness toolbar is cluttered with A* debug controls. A
   stripped viewer page may be wanted later — **out of scope for now**, noted for the design
   session.
@@ -138,29 +148,41 @@ BUILD_LOG if a step forces the issue.
 
 ---
 
-## 6. Build scope — current phase: **STEP 1 — Depth slider only**
+## 6. Build scope — current phase: **STEP 1.1 — Depth slider: reach single-level clusters**
 
-Deliver **only** the depth slider this round. Do **not** build focus, path, or the
-overlay primitive yet.
+Step 1 (the depth slider) is built and verified. This round is a small refinement so the
+slider can also collapse **top-level / single-level clusters**. On fixtures like
+`fixture.mmd` and `fixture_crosscluster` every cluster is depth 1, so the original
+`min = 1` left the slider disabled and those clusters uncollapsible. Change **only** the
+depth slider; do **not** start focus / path / overlay work.
 
-1. **Depth utility** — compute each subgraph's nesting depth from `ir.subgraphs` parent
-   chains (root subgraphs = depth 1, each nesting level +1). Put it in a small new module
-   (e.g. `spike6/src/depth.ts`) or alongside existing helpers — your call, keep it pure.
-2. **Toolbar control** — add a range input `#cfgDepth` (min 1, max = the graph's max
-   depth, default = max so nothing is collapsed initially) + a value label, in
-   `our-renderer.html`. Mirror the `#cfgCellSize` markup/styling. The max should be set
-   from the loaded fixture's actual max depth on load.
-3. **Wiring** (`entry.ts`) — on slider `input`/`change`, set
-   `sg.collapsed = (depthOf(sg) > N)` for every subgraph, then call
-   `rerenderWithCollapse()`. Threshold semantics: depth ≤ N visible, deeper collapsed;
-   at max → no collapses, at 1 → everything folds to top-level surrogates.
-4. **Coexistence** — Collapse All / Expand All / manual collapse must still work. Don't
-   attempt perfect slider↔manual sync (see §3); note the limitation in BUILD_LOG.
-5. **Verify** — exercise on `fixture_nested`, `fixture_cyclic_nested_3`, and
-   `fixture_deep_5level` (deepest nesting). `tsc --noEmit` clean; `vite build` passes.
-6. **Log** — append a BUILD_LOG entry: what was built, files touched, any assumptions
-   where the spec was ambiguous, and open questions for the design agent.
+1. **Range** — change the `#cfgDepth` slider `min` from `1` to **`0`**. Keep
+   `max = maxDepth(ir)` and `default = max`. Keep the formula
+   `collapsed = (depthOf(sg) > N)`. (Full locked semantics in §2 "Depth slider".)
+2. **Enable condition** — enable the slider whenever `maxDepth(ir) >= 1` (graph has at
+   least one subgraph). Disable ONLY when `maxDepth(ir) === 0` (no subgraphs). This
+   replaces Step 1's "disable when max ≤ 1".
+3. **Label** — the value label shows the current `N` (`0 … maxDepth`). At `N = 0` the
+   whole diagram folds to top-level surrogates; at `N = maxDepth` it is fully expanded.
+4. **Verify** — on `fixture.mmd` and `fixture_crosscluster` (single-level clusters:
+   confirm `N = 0` collapses `authentication` / `payment_system` / etc. to surrogates and
+   `N = 1` restores them), plus `fixture_nested` and `fixture_deep_5level` (multi-level
+   still steps cleanly). `tsc --noEmit` clean; `vite build` passes.
+5. **Log** — append a BUILD_LOG entry; note any assumptions/questions.
 
-**Definition of done (Step 1):** dragging the depth slider folds/unfolds the diagram by
-nesting level using the existing collapse path, with no layout/parity changes and a clean
-type-check.
+**Definition of done (1.1):** the depth slider is enabled on any clustered graph and, at
+its low end (`N = 0`), folds even single-level top-level clusters into surrogates, with no
+layout / parity changes and a clean type-check.
+
+> **Resolutions for the Step-1 open questions** (so the build agent has context without
+> reading BUILD_LOG):
+> - **OQ1** (prose vs formula) — RESOLVED: adopt `min = 0` with the existing `> N`
+>   formula (this round). §2 and the prose are now consistent.
+> - **OQ2** (max derived on load only) — CONFIRMED correct: `our-renderer.html` selects
+>   the fixture by URL param with no in-page switcher, and no later step needs the max
+>   re-derived without a reload.
+> - **OQ3** (slider vs manual-collapse drift) — CONFIRMED: keep the no-sync default (§3);
+>   the Step-2 mode manager will not reset the slider.
+> - **Assumption 1** (wire `input` only, not `change`) — ACCEPTED, keep as built.
+> - **Assumption 2** (dedicated `#depthPanel`) — ACCEPTED, keep as built.
+> - **Assumption 3** (disable when max ≤ 1) — SUPERSEDED by item 2 above.

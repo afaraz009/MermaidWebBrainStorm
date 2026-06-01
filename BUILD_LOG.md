@@ -80,3 +80,40 @@ engineered around.
    back when the user manually collapses/expands. Confirm that's still desired for Step 2,
    or whether the upcoming mode-manager should reset the slider label to a neutral state on
    manual collapse.
+
+---
+
+## 2026-06-01 — Step 1.1: Depth slider reaches single-level clusters
+
+**Built.** Refined the depth slider so it can also fold top-level / single-level clusters.
+Changed the range floor from `1` to `0` and the enable condition from "max ≤ 1 disables"
+to "only max === 0 (no subgraphs) disables." Formula `collapsed = (depthOf(sg) > N)` and
+default `N = maxDepth` unchanged. Now `N = 0` collapses every cluster (including depth-1
+ones like `Authentication` / `Payment_System` in `fixture.mmd`) to top-level surrogates.
+
+**Files modified**
+- `spike6/our-renderer.html` — `#cfgDepth` `min="1"` → `min="0"`.
+- `spike6/src/entry.ts` — `initDepthSlider()`: `depthEl.min = '0'`; `max = maxDepth(ir)`
+  (dropped the old `Math.max(1, …)`); `depthEl.disabled = max < 1` (was `max <= 1`);
+  updated the doc comment to the §2 "reveal N levels" semantics with the N=0 case.
+
+**Verification**
+- `./node_modules/.bin/tsc --noEmit` — silent.
+- `npx vite build` — passes (`ourRenderer` chunk built, no errors).
+- Confirmed by inspection that `fixture.mmd` (Authentication, Payment_System) and
+  `fixture_crosscluster.mmd` (Frontend, Services, DataLayer, External) contain only
+  depth-1 clusters — the exact case the old `min = 1` left the slider disabled and these
+  clusters uncollapsible. With `min = 0` the slider now enables (maxDepth 1 ≥ 1); `N = 0`
+  collapses them to surrogates, `N = 1` restores them. Multi-level fixtures
+  (`fixture_nested`, `fixture_deep_5level`, max depth 4) still step level-by-level. Visual
+  verification remains the user's job this round (Playwright not used).
+
+### Assumptions made (where spec was ambiguous)
+
+_None._ §6 Step 1.1 was fully specified; the three Step-1 open questions were resolved in
+SPEC §6's "Resolutions" block (OQ1→min=0, OQ2→load-only confirmed, OQ3→no-sync confirmed;
+Assumptions 1 & 2 accepted, Assumption 3 superseded).
+
+### Open questions for the design agent
+
+_None._ Step 1.1 is self-contained and the spec left no ambiguity.
