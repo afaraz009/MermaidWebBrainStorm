@@ -11,6 +11,7 @@ import { attachCollapseHandlers } from './collapse.js';
 import { attachPan, getPan, getZoom, setZoom, setPan } from './pan.js';
 import { attachContextMenu } from './contextMenuWiring.js';
 import { attachConnect, hideHandles } from './connect.js';
+import { computeDepths, maxDepth } from './depth.js';
 import type { IR } from './types.js';
 
 // `ir` is the source of truth (with `sg.collapsed` flags + pinned node
@@ -20,6 +21,10 @@ import type { IR } from './types.js';
 let ir: IR;
 let currentEff: IR;
 let detachDrag: (() => void) | null = null;
+// Per-subgraph nesting depth (root = 1), computed once from the source IR on
+// load. The depth slider reads this to decide which subgraphs to collapse.
+// Structural, so it never changes after parse (collapse only flips flags).
+let depths: Map<string, number> = new Map();
 const svg = document.getElementById('mount') as unknown as SVGSVGElement;
 
 function readFixtureName(): string {
@@ -113,6 +118,45 @@ async function main() {
   attachPan(svg);
   attachContextMenu(svg, () => ir, rerenderWithCollapse, resetLayout, toggleAstar, fitView);
   attachConnect(svg, () => ir, rerenderWithCollapse);
+  initDepthSlider();
+}
+
+// Depth slider: drives `sg.collapsed` from each subgraph's nesting depth, then
+// re-renders through the EXISTING collapse path (`rerenderWithCollapse`). No new
+// layout or render code — it reuses the collapse machinery. Semantics: "show
+// down to depth N, collapse deeper" → for every subgraph, collapsed = depth > N.
+// The slider's max is the loaded fixture's deepest nesting level, and it starts
+// at max so nothing is collapsed on load. A graph with no subgraphs (max 0) or
+// only top-level ones (max 1) leaves the slider at min=max=1 with nothing to do.
+//
+// Known limitation (SPEC §3): the slider WRITES flags but does not re-sync when
+// the user manually collapses/expands a cluster or hits Collapse All / Expand
+// All — those paths may diverge from the slider's last position. By design.
+function initDepthSlider(): void {
+  const depthEl = document.getElementById('cfgDepth') as HTMLInputElement | null;
+  const depthValEl = document.getElementById('cfgDepthVal');
+  if (!depthEl) return;
+
+  depths = computeDepths(ir);
+  const max = Math.max(1, maxDepth(ir));
+  depthEl.min = '1';
+  depthEl.max = String(max);
+  depthEl.value = String(max);
+  depthEl.disabled = max <= 1;
+  if (depthValEl) depthValEl.textContent = String(max);
+
+  function applyDepth(): void {
+    const n = +depthEl!.value;
+    if (depthValEl) depthValEl.textContent = String(n);
+    for (const sg of ir.subgraphs) {
+      sg.collapsed = (depths.get(sg.id) ?? 1) > n;
+    }
+    rerenderWithCollapse();
+  }
+
+  // `input` fires continuously while dragging; `change` fires on release. Both
+  // route through applyDepth so the diagram folds live as the user drags.
+  depthEl.addEventListener('input', applyDepth);
 }
 
 function resetLayout(): void {
