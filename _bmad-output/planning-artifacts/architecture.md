@@ -202,13 +202,22 @@ implementation story**.
 - PostHog analytics; Sentry monitoring; GitHub Actions CI with a perf-budget gate.
 - pnpm-workspaces monorepo; Supabase CLI local stack for dev.
 
-**Deferred Decisions (post-MVP or later trigger):**
-- **Payment processor (Paddle vs Stripe)** — deferred; decide before the premium-tier
-  build. Architecture stays processor-agnostic: a webhook Worker + a `subscription`
-  state row.
+**Wave-1.1 decision deferred to just-in-time (NOT post-MVP):**
+- **Payment processor (Paddle vs Stripe)** — the payment *capability* (hosted checkout,
+  FR27/NFR-S7) is **in Wave-1.1 scope** (premium tier); only the *processor selection* is
+  deferred to the premium milestone (the last build step). The architecture is
+  processor-agnostic (a webhook Worker + a `subscriptions` row), so this blocks the
+  premium milestone, not the architecture. Tracked as Gap #1. *(If you choose to re-scope
+  premium/payments to a post-1.1 fast-follow, that is a PRD `correct-course`, not an
+  architecture change — the seam supports either.)*
+
+**Genuinely deferred (post-MVP or later trigger):**
 - App-level field encryption — revisit only on enterprise/regulated demand.
 - elkjs "Adaptive" layout (pluggable by design); sequence-diagram disclosure
   graduation (post-launch demand); mobile editor, version history / diff view (V2).
+- Self-serve account-deletion UI — a documented manual deletion runbook covers the
+  NFR-S8 obligation at launch; the self-serve UI is a fast-follow (the deletion *cascade*
+  is specified now — see Authentication & Security).
 
 ### Data Architecture
 
@@ -217,9 +226,17 @@ implementation story**.
   (eliminates dual-write drift; matches the engine's derive-from-source model).
 - **`documents`** (Supabase Postgres): `id uuid` · `slug text unique` (≥64-bit random,
   `nanoid(12)`/`pgcrypto`) · `markdown text` · `view_state jsonb` · `title text` ·
-  `owner_id uuid null` → `auth.users` · `visibility` (`private`/`view`/`edit`) ·
+  `owner_id uuid NOT NULL` → `auth.users` · `visibility` (`private`/`view`/`edit`) ·
   `theme jsonb null` · `created_at` · `updated_at` · `last_accessed_at` (drives
   ≥90-day anon retention, NFR-R3).
+- **Ownership is uniform across tiers (no nullable owner, no separate session token).**
+  Anonymous users are real **Supabase anonymous-auth** users, so every document —
+  anonymous or premium — is owned by an `auth.uid()`. Anonymous diagrams are therefore
+  **fully persisted and shareable from day one** (FR16/17/18/22 — the distribution loop
+  depends on this; persistence is NOT skipped for anonymous users). On signup the same
+  uid is preserved (`updateUser`), so claim (FR19) needs no row migration. This is what
+  lets RLS be a single rule (`owner_id = auth.uid()`) for edit/delete across both tiers,
+  while public read stays a slug capability (below).
 - **`view_state` (soft overlay), keyed by stable fence ID** (`id=…` auto-stamped into
   each ```` ```mermaid ```` fence, stripped before parse): `{ collapsed[], depth?,
   pins{nodeId→{x,y}} }` per block. Reconciled on parse — orphaned IDs dropped silently.
@@ -234,8 +251,21 @@ implementation story**.
 - **Supabase Auth.** Anonymous sign-in (FR16/17); **uid-preserving conversion**
   (`updateUser` linking email/OAuth) = automatic anonymous→premium claim (FR19);
   email+password (bcrypt default, NFR-S5); Google + GitHub OAuth fast-follow (FR26).
-- **Sessions via `@supabase/ssr`** — cookie-based, httpOnly/Secure/SameSite=Lax, PKCE
-  (NFR-S6). Authorization uses verified `getUser()`, never unverified `getSession()`.
+- **Session model (browser-held, hardened — keeps direct CRUD).** `supabase-js` runs in
+  the browser and makes direct, RLS-protected PostgREST calls (preserves the hybrid
+  topology — no BFF). To honor NFR-S6 without a full proxy: the **short-lived access token
+  lives in memory only** (module scope, never `localStorage`), and the **long-lived
+  refresh token lives in an httpOnly/Secure/SameSite=Lax cookie** owned by a thin
+  `/api/auth/*` Worker route (set on sign-in/OAuth-callback, rotated on refresh, cleared
+  on sign-out). On load / access-token expiry the SPA calls the Worker refresh route,
+  which reads the httpOnly refresh cookie, exchanges it with Supabase, and returns a fresh
+  in-memory access token. This fits the "Workers own the secret-holding paths" principle
+  (the refresh token is the secret). Compensating controls: strict CSP, short access-token
+  TTL, refresh rotation. Authorization always uses verified `getUser()`, never
+  unverified `getSession()`.
+  *(Rejected alternative: a Worker BFF proxying all CRUD would put the whole session in
+  httpOnly cookies but contradicts the locked direct-CRUD/hybrid topology and adds latency
+  + code; plain `localStorage` tokens were rejected as they violate NFR-S6.)*
 - **Access control:** read-by-slug is a capability (unguessable ≥64-bit slug, NFR-S2)
   served via a `SECURITY DEFINER` RPC `get_shared_document(slug)`; edit/delete via RLS
   (`owner_id = auth.uid()`); `is_anonymous` JWT claim separates tiers; `visibility`
@@ -244,15 +274,35 @@ implementation story**.
   1.2+** (NFR-S1/S4). `noindex/nofollow` + robots exclusion on all `/d/*` (NFR-S3).
 - **Rate limiting** on Worker endpoints (Hono middleware) + Supabase Auth limits
   (NFR-S6). Dependency scanning weekly (NFR-S9).
+- **Account-data deletion cascade (FR30/NFR-S8, ≤30 days).** A single service-role
+  deletion routine removes, for a given user: (1) all owned `documents` + a **cache purge
+  for every owned slug** (via the purge path below), (2) any `subscriptions` row + a
+  cancel call to the payment processor, (3) the PostHog person (delete API), (4) the
+  `auth.users` row last. DB-level `ON DELETE CASCADE` from `auth.users` covers
+  `documents`/`subscriptions` as a backstop. Error-log PII (Sentry) is handled by bounded
+  retention + scrub. **At launch this runs as a documented manual runbook** invoking the
+  routine; the **self-serve UI is a fast-follow** (the cascade itself is specified now).
 
 ### API & Communication Patterns
 
 - **Authed CRUD:** `supabase-js` (PostgREST) directly, secured by RLS — no hand-written
   CRUD API.
-- **Cloudflare Workers (Hono), 3 endpoints only:** `GET /api/d/:slug` (recipient read,
-  edge-cached with TTL + purge-on-write), `POST /api/webhooks/:processor` (subscription
-  state → Supabase, service role), `POST /api/analytics` (first-party event ingest →
-  PostHog, keys server-side).
+- **Cloudflare Workers (Hono), focused endpoint set:**
+  - `GET /api/d/:slug` — recipient read; Cache-API edge-cached (short TTL backstop).
+  - `/api/auth/*` — session helper: sets/rotates/clears the httpOnly **refresh** cookie,
+    returns in-memory access tokens (see Session model).
+  - `POST /api/webhooks/:processor` — subscription state → Supabase (service role).
+  - `POST /api/analytics` — first-party event ingest → PostHog (keys server-side).
+  - `POST /internal/cache/purge` — **not client-callable**; invoked only by the Supabase
+    DB webhook below (shared-secret authenticated).
+- **Cache-invalidation mechanism (closes the purge gap).** Because writes go direct to
+  Supabase, purge is **server-driven, not client-trusted**: a **Supabase database webhook
+  / trigger on `documents` UPDATE & DELETE** calls `POST /internal/cache/purge` to evict
+  that slug's edge-cache entry. A short Cache-API TTL is the backstop. Correctness target
+  is **delete-eviction** (so a deleted slug stops serving and 404s per NFR-R2); **edit
+  staleness is explicitly acceptable in v1** (PRD §Real-Time: recipient view is
+  read-once-then-cache, updates seen on reload), so the trigger primarily guarantees
+  delete/owner-action freshness rather than live edit propagation.
 - **Contracts:** shared Zod schemas type-check Worker payloads and the engine
   `ViewState`. Consistent JSON error envelope; client errors surfaced via TanStack
   Query. Optimistic UI on create/save/share (NFR optimistic), debounced save (~500ms).
@@ -274,9 +324,12 @@ implementation story**.
   (remark) preview; live flow = one text field → preview + debounced
   `controller.setSource()`.
 - **Renderer Router (PRD seam):** flowchart/graph → native pipeline; all other Mermaid
-  types → lazy-loaded full `mermaid` viewer (pan/zoom only, FR15a). **Code-split** the
-  editor, the mermaid viewer-fallback, and elkjs to protect the 350KB recipient bundle
-  (NFR-P1/P2).
+  types → lazy-loaded full `mermaid` viewer (pan/zoom only, FR15a). **Required UX
+  affordance (FR15a):** on a non-flowchart block the disclosure controls render in a
+  **disabled state with an explanatory tooltip/badge** ("Disclosure is flowchart-only"),
+  so fallback diagrams don't look broken — covered by an E2E test asserting the controls
+  are disabled-with-explanation. **Code-split** the editor, the mermaid viewer-fallback,
+  and elkjs to protect the 350KB recipient bundle (NFR-P1/P2).
 
 ### Infrastructure & Deployment
 
@@ -291,25 +344,32 @@ implementation story**.
   PostHog; retention ≥30 days (NFR-M5).
 - **Scaling:** edge-cached recipient read shields Postgres; 10× spike = Workers
   autoscale + cache, with Supabase compute tier as the one config dial (NFR-Sc1/Sc2).
-- **Repo:** pnpm workspaces — `packages/render`, `packages/shared`, `apps/web`,
-  `workers/*` (detailed in step-06).
+- **Repo:** pnpm workspaces — `packages/render`, `packages/shared`, `apps/web` (the SPA +
+  its Cloudflare Worker under `apps/web/worker/`), detailed in step-06.
 
 ### Decision Impact Analysis
 
-**Implementation sequence (refines PRD build order):**
+**Implementation sequence — note: this intentionally supersedes the PRD's pre-spike
+build order** (PRD §Implementation Considerations / Phase 1, which placed the backend
+skeleton earlier). That order predates spike6 + `docs/architecture/06`; because the engine
+is already built and the load-bearing residual risk is **unmeasured performance**, the
+post-spike order front-loads the engine extraction + perf gate before the backend. If any
+downstream artifact cites the PRD sequence, **this document is authoritative for build
+order.**
 1. Extract `@mermaidweb/render` + `DiagramController` (no behavior change); `packages/shared` types/Zod.
 2. Perf harness: 200/500/1000-node fixtures + frame-time/cold-load probes → CI gate baseline.
 3. App shell: Vite+React+Cloudflare scaffold, React Router, Zustand, `<DiagramCanvas>` binding; port the built disclosure family onto the package API.
-4. Backend skeleton: Supabase schema + RLS + anonymous auth + slug + `get_shared_document` RPC; Hono recipient-read Worker with edge cache.
+4. Backend skeleton: Supabase schema + RLS + **anonymous auth (owner_id = anon uid)** + slug + `get_shared_document` RPC; Hono recipient-read Worker + `/api/auth/*` refresh-cookie route + the `documents` write-trigger → `/internal/cache/purge`.
 5. Workspace: CodeMirror editor + react-markdown preview + live-sync; command palette; minimap.
-6. Premium: auth conversion/claim, share permissions, export-with-collapse, themes — **then** wire the (deferred) payment processor.
+6. Premium: auth conversion/claim, share permissions, export-with-collapse, themes, account-deletion routine — **then** wire the payment processor (Wave-1.1, just-in-time selection).
 7. Analytics (PostHog) + Sentry wired continuously, verified before launch.
 
 **Cross-component dependencies:**
 - `view_state` shape is the contract binding engine ↔ data model ↔ export ↔ persistence — versioned in `packages/shared`.
 - Fence-ID stamping couples the Markdown parse layer ↔ data model ↔ engine block identity.
-- Edge-cache invalidation couples the save path (Supabase write) ↔ the Worker recipient-read cache (purge-on-write).
-- RLS + `is_anonymous` claim couples auth ↔ every data access path.
+- Edge-cache invalidation couples the write path (Supabase `documents` UPDATE/DELETE trigger) ↔ the Worker `/internal/cache/purge` ↔ the recipient-read cache. Delete-eviction is the correctness target (NFR-R2); edit staleness is acceptable (PRD §Real-Time).
+- Uniform `owner_id` (anon or premium uid) + `is_anonymous` claim couples auth ↔ every data access path; the account-deletion cascade depends on this ownership + the purge path.
+- The browser session model (in-memory access token + httpOnly refresh cookie via `/api/auth/*`) couples the SPA auth bootstrap ↔ the Worker auth route ↔ direct supabase-js CRUD.
 
 ## Implementation Patterns & Consistency Rules
 
@@ -491,21 +551,29 @@ mermaidweb/
 │       │   ├── hooks/                          # useDiagram, useAutoSave, useAnonSession
 │       │   ├── stores/                         # workspace-store · diagram-store · ui-store (Zustand)
 │       │   ├── lib/
-│       │   │   ├── supabase.ts                 # @supabase/ssr cookie client
+│       │   │   ├── supabase.ts                 # browser client; in-memory access token
+│       │   │   ├── auth.ts                      # bootstrap + refresh via /api/auth/*
 │       │   │   ├── query-client.ts · query-keys.ts
 │       │   │   ├── markdown.ts                 # fence parse + stable-id stamping
 │       │   │   └── analytics.ts                # PostHog → /api/analytics
 │       │   └── styles/
 │       ├── worker/                            # the Cloudflare Worker (Hono)
 │       │   ├── index.ts                        # Hono app
-│       │   ├── routes/{shared-document,webhooks,analytics}.ts
-│       │   └── middleware/{rate-limit,cors}.ts
+│       │   ├── routes/
+│       │   │   ├── shared-document.ts           # GET /api/d/:slug (edge-cached)
+│       │   │   ├── auth.ts                      # /api/auth/* (httpOnly refresh cookie)
+│       │   │   ├── webhooks.ts                  # POST /api/webhooks/:processor
+│       │   │   ├── analytics.ts                 # POST /api/analytics
+│       │   │   ├── cache-purge.ts               # POST /internal/cache/purge (DB-webhook only)
+│       │   │   └── account.ts                   # account-deletion cascade routine
+│       │   └── middleware/{rate-limit,cors,webhook-auth}.ts
 │       ├── e2e/                                # Playwright critical paths (NFR-M3)
 │       └── package.json · tsconfig.json
 │
 ├── supabase/
 │   ├── config.toml                            # CLI local stack
-│   └── migrations/                            # SQL: documents, subscriptions, RLS, get_shared_document RPC
+│   └── migrations/                            # SQL: documents, subscriptions, RLS, get_shared_document RPC,
+│                                              #      documents UPDATE/DELETE webhook → cache-purge, ON DELETE CASCADE
 │
 └── docs/architecture/**                       # existing as-built engine docs (unchanged)
 ```
@@ -514,10 +582,11 @@ mermaidweb/
 
 **API boundaries:**
 - **Client → Supabase** (authed CRUD): `supabase-js` (PostgREST) under RLS — list/rename/
-  delete/save own documents (FR20/21), create (FR16), claim (FR19).
-- **Client → Worker** (`/api/*`): recipient read, analytics ingest.
-- **Worker → Supabase** (service role): `get_shared_document(slug)` RPC + webhook writes.
-- **Webhook processor → Worker**: `/api/webhooks/:processor` (deferred processor).
+  delete/save own documents (FR20/21), create (FR16, owned by anon uid), claim (FR19).
+- **Client → Worker** (`/api/*`): recipient read, `/api/auth/*` session refresh, analytics ingest.
+- **Worker → Supabase** (service role): `get_shared_document(slug)` RPC, webhook writes, deletion cascade.
+- **Supabase DB webhook → Worker**: `documents` UPDATE/DELETE → `/internal/cache/purge` (shared-secret).
+- **Payment processor → Worker**: `/api/webhooks/:processor` (processor selected just-in-time, Wave-1.1).
 
 **Component boundaries:**
 - React owns the container + chrome; **`@mermaidweb/render` owns the SVG subtree** —
@@ -538,26 +607,46 @@ mermaidweb/
 ### Requirements → Structure Mapping (cross-cutting)
 
 - **Anonymous identity & claim (FR16–19):** `features/auth` + `hooks/useAnonSession` +
-  Supabase anonymous auth + `updateUser` conversion; RLS keys off `auth.uid()`/`is_anonymous`.
+  Supabase anonymous auth (**every doc owned by the anon `auth.uid()`** — fully persisted +
+  shareable) + `updateUser` conversion; RLS keys off `auth.uid()`/`is_anonymous`. Session
+  bootstrap/refresh via `lib/auth.ts` ↔ `worker/routes/auth.ts`.
 - **Live-sync (FR1–2):** `features/workspace` orchestrates: editor change → `lib/markdown.ts`
   (parse + stamp) → `preview` re-render + debounced `controller.setSource()`.
-- **Disclosure (FR6–11):** behavior in `packages/render` (built); UI triggers in
-  `features/disclosure`; state via `diagram-store` ↔ controller `viewStateChange`.
+- **Disclosure (FR6–11) + non-flowchart affordance (FR15a):** behavior in `packages/render`
+  (built); UI triggers in `features/disclosure`; state via `diagram-store` ↔ controller
+  `viewStateChange`. On non-flowchart blocks the controls render disabled-with-explanation
+  (E2E-tested).
 - **Export with collapse state (FR29):** `features/export` reads current `view_state` +
   `controller.export(fmt)`.
+- **Account-data deletion (FR30/NFR-S8):** `features/account` triggers →
+  `worker/routes/account.ts` cascade (documents + per-slug cache purge, subscriptions +
+  processor cancel, PostHog person, `auth.users`). Manual runbook at launch; self-serve UI
+  is a fast-follow.
 
 ### Integration Points & Data Flow
 
+**Auth bootstrap:** on load, `lib/auth.ts` calls `/api/auth/refresh`; the Worker reads the
+httpOnly refresh cookie, exchanges it with Supabase, returns a fresh **in-memory** access
+token. If no session, `signInAnonymously()` mints an anonymous uid (refresh cookie set by
+the Worker). All subsequent CRUD is direct supabase-js under RLS.
+
 **Author save path:** edit → `workspace` → `diagram-store` (engine deltas) → debounced
-TanStack mutation → `supabase-js` write (optimistic) → on success, Worker purges the
-`/api/d/:slug` edge-cache entry.
+TanStack mutation → `supabase-js` write (optimistic, RLS-scoped to `owner_id`) → the
+Supabase `documents` UPDATE trigger fires `/internal/cache/purge` for that slug (server-
+driven; the client does not purge). Edit staleness for recipients is acceptable per PRD
+§Real-Time; delete eviction is guaranteed (NFR-R2).
 
 **Recipient cold path:** `GET /api/d/:slug` (Hono Worker, edge-cached) → `get_shared_document`
 RPC → document JSON → SPA hydrates → engine `parseToIR → layout → renderFull` →
 author's saved `view_state` applied. Lazy-load CodeMirror / mermaid-fallback only if needed.
 
+**Account-deletion path:** `features/account` → `worker/routes/account.ts` (service role) →
+delete owned documents (+ purge each slug) → cancel/delete subscription at processor +
+local row → PostHog person delete → delete `auth.users`. Runs via manual runbook at launch.
+
 **External integrations:** Supabase (data plane), Cloudflare (edge/host), PostHog (analytics),
-Sentry (errors), payment processor (deferred, isolated to the webhook Worker + `subscriptions`).
+Sentry (errors), payment processor (Wave-1.1; processor chosen just-in-time, isolated to the
+webhook Worker + `subscriptions`).
 
 ### Development Workflow Integration
 
@@ -573,8 +662,10 @@ Sentry (errors), payment processor (deferred, isolated to the webhook Worker + `
 ### Coherence Validation ✅
 
 **Decision Compatibility:** All chosen technologies are current (June 2026) and mutually
-compatible: Vite 8 · React 19 · `@cloudflare/vite-plugin` 1.0 · Supabase (`supabase-js` 2 +
-`@supabase/ssr`) · Zustand 5 · TanStack Query 5 · React Router 7 · Hono · CodeMirror 6. The
+compatible: Vite 8 · React 19 · `@cloudflare/vite-plugin` 1.0 · Supabase (`supabase-js` 2 in
+the browser with an in-memory token store; `@supabase/ssr` used server-side in the `/api/auth/*`
+Worker for the refresh-cookie exchange) · Zustand 5 · TanStack Query 5 · React Router 7 · Hono ·
+CodeMirror 6. The
 `@mermaidweb/render` engine is framework-agnostic plain TS, so it embeds under React without
 conflict. The Cloudflare-host + Supabase-data-plane split is a proven, well-trodden pattern;
 the one cross-provider hop (Worker→Supabase) is shielded on the hot path by the edge cache.
@@ -609,8 +700,8 @@ expressible in the structure as drawn.
   optimistic save + 350KB budget with code-splitting. P3/P4/P5/P8 → client-side engine +
   **CI perf-budget gate** vs 200/500/1000-node fixtures.
 - Security S1–S11 → disk-level encryption + RLS + ≥64-bit slugs + noindex/robots + TLS +
-  bcrypt + httpOnly cookie sessions + SAQ-A hosted checkout + 30-day deletion + weekly dep
-  scan + (1.2) no-train LLM posture.
+  bcrypt + httpOnly **refresh-cookie** sessions (in-memory access token) + SAQ-A hosted
+  checkout + ≤30-day deletion cascade + weekly dep scan + (1.2) no-train LLM posture.
 - Reliability R1–R6 → Supabase durability/backups, slug stability (no 404 except owner
   delete), `last_accessed_at`-driven ≥90-day retention, optimistic-with-rollback degradation.
 - Scalability Sc1–Sc2 → edge cache shields Postgres; Workers autoscale; Supabase tier = the
@@ -620,8 +711,9 @@ expressible in the structure as drawn.
 
 ### Implementation Readiness Validation ✅
 
-- **Decisions** documented with verified versions; the four open decisions are all resolved
-  (payments explicitly deferred with a processor-agnostic seam).
+- **Decisions** documented with verified versions; the four open decisions are all resolved.
+  Payment-*processor* selection is a Wave-1.1 decision deferred to just-in-time (the seam is
+  processor-agnostic); the session model is decided (browser-held, hardened).
 - **Structure** is concrete (complete tree, boundaries, FR→location mapping, data-flow paths).
 - **Patterns** cover the conflict points including the two project-specific ones (engine
   conformance, casing seam) with examples and anti-patterns.
@@ -631,19 +723,22 @@ expressible in the structure as drawn.
 **Critical gaps (block implementation):** None.
 
 **Important gaps (track, non-blocking):**
-1. **Payment processor undecided** — premium billing (FR27) cannot ship until Paddle/Stripe
-   is chosen; the rest of premium (auth, claim, share permissions, export, themes) is
-   unblocked. Seam kept processor-agnostic (webhook Worker + `subscriptions`).
+1. **Payment-processor selection (Wave-1.1, just-in-time — NOT post-MVP)** — the premium
+   *milestone* (FR27/NFR-S7) can't ship until Paddle/Stripe is chosen; the rest of premium
+   (auth, claim, share permissions, export, themes) is unblocked. Seam is processor-agnostic
+   (webhook Worker + `subscriptions`). *Re-scoping premium out of 1.1 is a PRD correct-course
+   option, not an architecture change.*
 2. **Performance is addressed but unmeasured** — NFR-P3/P4/P5 are validated only once the CI
    perf-gate + 200/500/1000-node fixtures exist (impl step 2). Carried risk from `docs/
    architecture/06`. The architecture *enables* the proof; it is not yet proven.
 3. **Net-new (specced, not built):** command palette, minimap, Renderer Router, mermaid
    viewer-fallback — expected at architecture stage; flagged so they aren't assumed done.
-4. **Subtle integration points needing focused tests:** edge-cache purge-on-write (NFR-R2,
-   no stale/404) and `view_state` fence-ID stamping + orphan reconciliation (multi-block).
+4. **Integration points now specified, need focused tests:** the cache purge path
+   (Supabase `documents` write-trigger → `/internal/cache/purge`; delete-eviction per NFR-R2)
+   and `view_state` fence-ID stamping + orphan reconciliation (multi-block).
 
 **Nice-to-have (later):** elkjs "Adaptive" layout, version history / diff view, app-level
-field encryption — all deferred by design.
+field encryption, self-serve account-deletion UI — all deferred by design.
 
 ### Validation Issues Addressed
 
@@ -651,6 +746,29 @@ No critical issues. The important gaps above are documented with owners/triggers
 carried risks (perf unmeasured, comprehension thesis unvalidated) are product/sequencing
 concerns surfaced from `docs/architecture/06`, not architecture defects — both are mitigated
 by the front-loaded CI perf-gate and the pre-launch beta.
+
+**Post-review corrections (2026-06-01).** A design review surfaced six issues, all resolved
+in this revision:
+1. *Payment mislabeled post-MVP* → re-categorized as a Wave-1.1 just-in-time processor
+   selection (Decisions + Gap #1).
+2. *Anonymous ownership inconsistency* (`owner_id null` vs RLS `auth.uid()`) → `owner_id NOT
+   NULL`; anonymous docs owned by the Supabase anonymous uid and **fully persisted/shareable**
+   (the proposal to drop anonymous persistence was rejected — it would break the FR16–22
+   distribution loop).
+3. *Cache purge path undefined* → Supabase `documents` UPDATE/DELETE webhook → Worker
+   `/internal/cache/purge` + short TTL; delete-eviction is the NFR-R2 target, edit staleness
+   acceptable per PRD §Real-Time.
+4. *Session model contradiction* (httpOnly cookies vs direct browser CRUD) → resolved as
+   browser-held + hardened: in-memory access token + httpOnly refresh cookie via `/api/auth/*`
+   Worker route (keeps direct CRUD; a full BFF was rejected as contradicting the hybrid topology).
+5. *Account deletion unarchitected* → explicit service-role cascade routine (documents + cache
+   purge, subscriptions + processor cancel, PostHog person, `auth.users`); manual runbook at
+   launch, self-serve UI deferred.
+6. *FR15a affordance missing* → disclosure controls render disabled-with-explanation on
+   non-flowchart blocks, with an E2E test.
+
+Plus a governance note: the implementation sequence explicitly **supersedes** the PRD's
+pre-spike build order (rationale in Decision Impact Analysis).
 
 ### Architecture Completeness Checklist
 
@@ -681,8 +799,8 @@ by the front-loaded CI perf-gate and the pre-launch beta.
 ### Architecture Readiness Assessment
 
 **Overall Status:** READY FOR IMPLEMENTATION (all 16 checklist items confirmed; no critical
-gaps — the open items are a deferred payment-processor choice and an unmeasured-perf risk that
-the first implementation steps are designed to close).
+gaps — the open items are a Wave-1.1 just-in-time payment-processor selection and an
+unmeasured-perf risk that the first implementation steps are designed to close).
 
 **Confidence Level:** High — the hardest, novel risk (the renderer/layout/disclosure engine)
 is already built and spike6-validated; remaining work is conventional web-SaaS scaffolding
