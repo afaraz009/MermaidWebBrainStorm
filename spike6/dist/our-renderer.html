@@ -46,6 +46,9 @@
     /* Accent stroke for active edges — applies to focus neighbours and path edges alike. */
     .disclosure-active .edge-path,
     .disclosure-active .edge-arrow-line { stroke: #4a6cf7; stroke-width: 2.5; }
+    /* Active cluster waypoint: accent the container border (contents stay at
+       normal visibility — tri-state "neutral"). */
+    [data-subgraph-id].disclosure-active > rect { stroke: #4a6cf7; stroke-width: 2.5; }
     /* Transient "no path" cue (path mode): flash the clicked target red over the
        dim. Defined after .disclosure-dim so opacity:1 wins by source order. */
     .path-no-route { opacity: 1; }
@@ -55,7 +58,7 @@
     .path-no-route > polygon,
     .path-no-route > path { stroke: #e0395d; stroke-width: 3; transition: stroke 0.15s ease; }
   </style>
-  <script type="module" crossorigin src="/assets/ourRenderer-DC7c54hE.js"></script>
+  <script type="module" crossorigin src="/assets/ourRenderer-DRWM6DFq.js"></script>
   <link rel="modulepreload" crossorigin href="/assets/modulepreload-polyfill-CSRv37U6.js">
   <link rel="modulepreload" crossorigin href="/assets/path-9gSf8qMM.js">
   <link rel="modulepreload" crossorigin href="/assets/array-CYHT4lxU.js">

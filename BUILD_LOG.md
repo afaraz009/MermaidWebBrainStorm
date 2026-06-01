@@ -355,3 +355,73 @@ SPEC §3A / §3.1 still say the no-route case is `clearEmphasis + reset selectio
 shipped behavior now differs per your in-session call (keep source + cue, source stays
 selected). Update §3A/§3.1 when convenient so the contract matches the build. No code action
 needed from me unless you want a different no-route behavior.
+
+---
+
+## 2026-06-01 — Step 3.2: Path/focus through whole clusters (lit container)
+
+**Built.** Route-finding and emphasis now treat a whole cluster as a first-class waypoint.
+Adjacency is built from **logical endpoints** (`fromCluster ?? from`, `toCluster ?? to`), so
+an edge wired to a cluster makes the (expanded) cluster a graph node; emphasis is now
+**tri-state and cluster-aware**, so an on-route cluster renders as a lit container (border
+accented, contents at normal visibility) with the off-route graph dimmed.
+
+**Files modified**
+- `spike6/src/disclosure-overlay.ts` —
+  - `buildAdjacency`: builds `out` / `in` / `neighbors` / `incident` from `lf = fromCluster
+    ?? from` and `lt = toCluster ?? to`. Cluster ids now appear as graph nodes; leaf↔leaf
+    edges unchanged; `e.id` still the edge key.
+  - `setEmphasis` signature is now `(svg, ir, activeNodeIds, activeEdgeKeys)`. Tri-state per
+    element (precedence active > neutral > dim, equivalent to the spec's three passes):
+    leaves → active if selected, neutral if descendant of an active cluster, else dim;
+    clusters → active if a waypoint, neutral if descendant of an active cluster OR ancestor
+    of any active element, else dim; edges → active if on route, neutral if both logical
+    endpoints descend from the SAME active cluster (internal edge of an on-route cluster),
+    else dim. Containment from a memoised `ir.subgraphs`/`ir.nodes` ancestor walk; read-only.
+  - `clearEmphasis` already clears by class so it covers `[data-subgraph-id]` too (comment
+    updated).
+- `spike6/src/path.ts` — `pathEdges` predicate now uses logical endpoints (`lf ∈ reachFromS
+  && lt ∈ reachToT`); all four `setEmphasis` calls (pickSource, success, no-route) pass the
+  effective IR.
+- `spike6/src/focus.ts` — `focusNode` passes the effective IR to `setEmphasis`; neighbours
+  already come from the logical `neighbors`, so a node wired to a cluster now focuses the
+  cluster (free improvement, no other change).
+- `spike6/our-renderer.html` — added `[data-subgraph-id].disclosure-active > rect { stroke:
+  #4a6cf7; stroke-width:2.5 }`. Kept `.disclosure-dim` (opacity .1) on cluster groups —
+  reads acceptably (the rect's own fill-opacity is already 0.15), so I did not soften it.
+
+**Verification**
+- `./node_modules/.bin/tsc --noEmit` — silent.
+- `npx vite build` — passes (`ourRenderer` 122.5 → 123.4 kB, no errors).
+- Traced `fixture_rl_chain`: `Source→Sink` → logical reach = `{Source, Proc, Audit, Sink}`;
+  `Proc` (cluster) is active → accented border, its leaves `A/B/C` + internal edges neutral
+  (normal), the 4 outer edges accented. `Audit` lights as the parallel branch (it IS on a
+  valid Source→Sink route). Confirms `Processing` as a lit container.
+- Traced `fixture_cyclic_nested_2`: `Ingress→Egress` → reach = `{Ingress, API_Layer, Egress}`;
+  `API_Layer` accented as the connecting container; nested `Service_Tier`/`Cache_Tier` +
+  their leaves neutral (descendants of an active cluster); `Telemetry` cluster + its leaves
+  and the cross-edges into them dimmed (off route).
+- Leaf↔leaf regression (`fixture.mmd`): no cluster ids enter the logical graph, so
+  `activeClusters` is empty and leaves/edges class exactly as in 3.1 — both decision branches
+  still light. New: off-route clusters now dim, and a cluster that merely *contains* route
+  leaves (e.g. Authentication on a `Login→End` route) stays neutral/visible while its
+  off-route leaves dim — the intended tri-state. Still pure class mutation; no forbidden
+  file touched. Visual verification is the user's job this round (Playwright not used).
+
+### Assumptions made (where spec was ambiguous)
+
+1. **(§3.2 step 3 — "three passes")** Implemented the tri-state as a single per-element pass
+   with active > neutral > dim precedence rather than three literal sweeps. The final class
+   on every element is identical to the described dim-all → un-dim-neutral → accent-active
+   sequence; this avoids adding-then-removing classes. Flag if you specifically want the
+   literal three-pass structure.
+2. **(§3.2 — dimmed cluster rect)** Left `.disclosure-dim` at opacity 0.1 on
+   `[data-subgraph-id]` groups (spec said "soften if harsh"). With the rect's existing
+   fill-opacity 0.15 the dimmed box reads as a faint outline, which looked fine in trace; not
+   softened. Easy to bump to e.g. 0.25 if you find it too faint in the live view.
+
+### Open questions for the design agent
+
+_None._ §3.2 specified the adjacency, reachability, and tri-state rules precisely; the
+known limitation (selecting a leaf *inside* a waypoint cluster as an endpoint) is noted in
+§6 and left unbuilt as instructed.

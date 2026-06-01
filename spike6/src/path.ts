@@ -80,7 +80,7 @@ export function attachPath(svg: SVGSVGElement, getEff: () => IR): () => void {
   // Click 1: remember the source and show it so the pick is visible.
   function pickSource(nodeId: string): void {
     source = nodeId;
-    setEmphasis(svg, new Set([nodeId]), new Set());
+    setEmphasis(svg, getEff(), new Set([nodeId]), new Set());
   }
 
   // Click 2: highlight EVERY node/edge on ANY directed route source→target, via
@@ -111,7 +111,7 @@ export function attachPath(svg: SVGSVGElement, getEff: () => IR): () => void {
         // Keep source selected; re-assert its highlight (source bright, rest
         // dimmed) and flash the clicked target as a "no path" cue. source stays
         // set → next click retries the target.
-        setEmphasis(svg, new Set([src]), new Set());
+        setEmphasis(svg, eff, new Set([src]), new Set());
         flashNoRoute(target);
         return;
       }
@@ -123,13 +123,16 @@ export function attachPath(svg: SVGSVGElement, getEff: () => IR): () => void {
     const pathNodes = new Set<string>();
     for (const id of reachFromS) if (reachToT.has(id)) pathNodes.add(id);
 
-    // An edge lies on an S→T route iff its tail is reachable from S and its head
-    // can reach T (the edge bridges the two reach sets).
+    // An edge lies on an S→T route iff its (logical) tail is reachable from S and
+    // its (logical) head can reach T (the edge bridges the two reach sets). Use
+    // logical endpoints so whole-cluster edges count toward the route.
     const pathEdges = new Set<string>();
     for (const e of eff.edges) {
-      if (reachFromS.has(e.from) && reachToT.has(e.to)) pathEdges.add(e.id);
+      const lf = e.fromCluster ?? e.from;
+      const lt = e.toCluster ?? e.to;
+      if (reachFromS.has(lf) && reachToT.has(lt)) pathEdges.add(e.id);
     }
-    setEmphasis(svg, pathNodes, pathEdges);
+    setEmphasis(svg, eff, pathNodes, pathEdges);
   }
 
   pathBtn?.addEventListener('click', () => {

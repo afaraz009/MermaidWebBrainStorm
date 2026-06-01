@@ -53,7 +53,8 @@ export function attachFocus(svg: SVGSVGElement, getEff: () => IR): () => void {
   // needs no new logic. Active edges are the clicked node's incident edges (the
   // connecting edges), per SPEC §2C.
   function focusNode(nodeId: string): void {
-    const { neighbors, incident } = buildAdjacency(getEff());
+    const eff = getEff();
+    const { neighbors, incident } = buildAdjacency(eff);
     const active = new Set<string>([nodeId]);
     let frontier = new Set<string>([nodeId]);
     for (let h = 0; h < HOPS; h++) {
@@ -69,7 +70,7 @@ export function attachFocus(svg: SVGSVGElement, getEff: () => IR): () => void {
       frontier = next;
     }
     const activeEdges = new Set<string>(incident.get(nodeId) ?? []);
-    setEmphasis(svg, active, activeEdges);
+    setEmphasis(svg, eff, active, activeEdges);
   }
 
   // Toolbar toggle. Reflects (and is reflected by) the shared mode singleton.

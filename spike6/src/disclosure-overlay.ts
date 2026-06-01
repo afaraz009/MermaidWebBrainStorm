@@ -40,42 +40,114 @@ export function buildAdjacency(ir: IR): Adjacency {
     if (!inAdj.has(id)) inAdj.set(id, new Set());
   };
   for (const e of ir.edges) {
-    ensure(e.from);
-    ensure(e.to);
-    neighbors.get(e.from)!.add(e.to);
-    neighbors.get(e.to)!.add(e.from);
-    incident.get(e.from)!.push(e.id);
-    incident.get(e.to)!.push(e.id);
-    out.get(e.from)!.add(e.to);
-    inAdj.get(e.to)!.add(e.from);
+    // Logical endpoints: an edge that connects to a whole cluster is stored
+    // against a rewritten representative leaf, with the real cluster id in
+    // `fromCluster`/`toCluster`. Build the route graph from those cluster ids so
+    // an (expanded) cluster becomes a first-class waypoint, not an arbitrary
+    // internal leaf. Leaf↔leaf edges are unchanged. `e.id` stays the edge key.
+    const lf = e.fromCluster ?? e.from;
+    const lt = e.toCluster ?? e.to;
+    ensure(lf);
+    ensure(lt);
+    neighbors.get(lf)!.add(lt);
+    neighbors.get(lt)!.add(lf);
+    incident.get(lf)!.push(e.id);
+    incident.get(lt)!.push(e.id);
+    out.get(lf)!.add(lt);
+    inAdj.get(lt)!.add(lf);
   }
   return { neighbors, incident, out, in: inAdj };
 }
 
-// Dim everything NOT in the active sets and mark the active ones, by mutating
-// classes on the live SVG. Operates on `[data-node-id]` and `[data-edge-key]`
-// elements only — cluster rects (`[data-subgraph-id]`) are intentionally left
-// alone this round. Idempotent: re-calling with a new selection re-classes all
-// elements without a separate clear.
+// Tri-state, cluster-aware emphasis on the live SVG. `activeNodeIds` may contain
+// leaf ids AND cluster ids (a cluster that is a route waypoint); `activeEdgeKeys`
+// are `e.id`s. Each `[data-node-id]` / `[data-edge-key]` / `[data-subgraph-id]`
+// element ends in one of three states (equivalent to the spec's three passes,
+// applied per element with precedence active > neutral > dim):
+//   • active  — on the route: `.disclosure-active` (accented), no dim.
+//   • neutral — inside an on-route cluster, or a cluster containing the route:
+//               neither class (normal visibility).
+//   • dimmed  — off route: `.disclosure-dim`.
+// Containment comes from a read-only walk of `ir.subgraphs` / `ir.nodes`.
 export function setEmphasis(
   svg: SVGSVGElement,
+  ir: IR,
   activeNodeIds: Set<string>,
   activeEdgeKeys: Set<string>,
 ): void {
+  const sgById = new Map(ir.subgraphs.map((s) => [s.id, s]));
+  const nodeById = new Map(ir.nodes.map((n) => [n.id, n]));
+  const edgeById = new Map(ir.edges.map((e) => [e.id, e]));
+
+  // Immediate containing subgraph id of a node OR subgraph id.
+  const parentOf = (id: string): string | undefined =>
+    sgById.has(id) ? sgById.get(id)!.parent : nodeById.get(id)?.parent;
+
+  // Memoised set of ancestor cluster ids (innermost→outermost) for any id.
+  const ancCache = new Map<string, Set<string>>();
+  const ancestorsOf = (id: string): Set<string> => {
+    const hit = ancCache.get(id);
+    if (hit) return hit;
+    const out = new Set<string>();
+    const seen = new Set<string>();
+    let p = parentOf(id);
+    while (p && !seen.has(p)) { seen.add(p); out.add(p); p = sgById.get(p)?.parent; }
+    ancCache.set(id, out);
+    return out;
+  };
+
+  // Active clusters = active ids that are subgraph ids (route waypoints).
+  const activeClusters = new Set<string>();
+  for (const id of activeNodeIds) if (sgById.has(id)) activeClusters.add(id);
+
+  const descendantOfActive = (id: string): boolean => {
+    for (const a of ancestorsOf(id)) if (activeClusters.has(a)) return true;
+    return false;
+  };
+
+  // Clusters that contain any active element must stay visible (neutral).
+  const ancestorVisible = new Set<string>();
+  for (const id of activeNodeIds) for (const a of ancestorsOf(id)) ancestorVisible.add(a);
+
+  const setState = (el: Element, state: 'active' | 'neutral' | 'dim'): void => {
+    el.classList.toggle('disclosure-active', state === 'active');
+    el.classList.toggle('disclosure-dim', state === 'dim');
+  };
+
+  // Leaves: active if selected, neutral if inside an active cluster, else dim.
   svg.querySelectorAll('[data-node-id]').forEach((el) => {
-    const active = activeNodeIds.has(el.getAttribute('data-node-id')!);
-    el.classList.toggle('disclosure-active', active);
-    el.classList.toggle('disclosure-dim', !active);
+    const id = el.getAttribute('data-node-id')!;
+    setState(el, activeNodeIds.has(id) ? 'active' : descendantOfActive(id) ? 'neutral' : 'dim');
   });
+
+  // Clusters: active if a waypoint, neutral if inside an active cluster or
+  // containing the route, else dim.
+  svg.querySelectorAll('[data-subgraph-id]').forEach((el) => {
+    const id = el.getAttribute('data-subgraph-id')!;
+    const neutral = descendantOfActive(id) || ancestorVisible.has(id);
+    setState(el, activeNodeIds.has(id) ? 'active' : neutral ? 'neutral' : 'dim');
+  });
+
+  // Edges: active if on route, neutral if an internal edge of an on-route cluster
+  // (both logical endpoints descend from the SAME active cluster), else dim.
   svg.querySelectorAll('[data-edge-key]').forEach((el) => {
-    const active = activeEdgeKeys.has(el.getAttribute('data-edge-key')!);
-    el.classList.toggle('disclosure-active', active);
-    el.classList.toggle('disclosure-dim', !active);
+    const key = el.getAttribute('data-edge-key')!;
+    if (activeEdgeKeys.has(key)) { setState(el, 'active'); return; }
+    const e = edgeById.get(key);
+    let neutral = false;
+    if (e) {
+      const lf = e.fromCluster ?? e.from;
+      const lt = e.toCluster ?? e.to;
+      const al = ancestorsOf(lf);
+      const at = ancestorsOf(lt);
+      for (const c of activeClusters) if (al.has(c) && at.has(c)) { neutral = true; break; }
+    }
+    setState(el, neutral ? 'neutral' : 'dim');
   });
 }
 
-// Restore full opacity: remove both overlay classes from every element. Safe to
-// call when nothing is emphasised.
+// Restore full opacity: remove both overlay classes from every element (nodes,
+// edges, AND cluster rects). Safe to call when nothing is emphasised.
 export function clearEmphasis(svg: SVGSVGElement): void {
   svg.querySelectorAll('.disclosure-dim, .disclosure-active').forEach((el) => {
     el.classList.remove('disclosure-dim', 'disclosure-active');
