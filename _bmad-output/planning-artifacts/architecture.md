@@ -210,6 +210,10 @@ implementation story**.
   premium milestone, not the architecture. Tracked as Gap #1. *(If you choose to re-scope
   premium/payments to a post-1.1 fast-follow, that is a PRD `correct-course`, not an
   architecture change — the seam supports either.)*
+  **Reconciliation with PRD Open Decision #5** (which nominally places the processor choice
+  in the *architecture* phase): this is an **intentional deferral**, ratified 2026-06-01.
+  **Action:** update PRD Open Decision #5's trigger to "before premium milestone" so
+  downstream agents don't treat it as a missed architecture-phase decision.
 
 **Genuinely deferred (post-MVP or later trigger):**
 - App-level field encryption — revisit only on enterprise/regulated demand.
@@ -226,9 +230,19 @@ implementation story**.
   (eliminates dual-write drift; matches the engine's derive-from-source model).
 - **`documents`** (Supabase Postgres): `id uuid` · `slug text unique` (≥64-bit random,
   `nanoid(12)`/`pgcrypto`) · `markdown text` · `view_state jsonb` · `title text` ·
-  `owner_id uuid NOT NULL` → `auth.users` · `visibility` (`private`/`view`/`edit`) ·
+  `owner_id uuid NOT NULL` → `auth.users` · `visibility` (`private`/`link-view`) ·
   `theme jsonb null` · `created_at` · `updated_at` · `last_accessed_at` (drives
   ≥90-day anon retention, NFR-R3).
+- **`document_grants`** (capability links — the mechanism behind FR25 view/editable
+  sharing): `{ id, document_id → documents, role ('view'|'edit'), token text unique
+  (≥64-bit), label, created_at, revoked_at null }`. The owner mints/revokes grants
+  (direct, RLS). The bare slug is the default **view** link (when `visibility='link-view'`);
+  an **editable** share (FR25) is an `edit`-role grant token. Revocable, multiple per doc.
+- **`subscriptions`** (billing state, processor-agnostic): `{ id, owner_id → auth.users,
+  processor null, external_id null, status, current_period_end, updated_at }`.
+- **`deletion_requests`** (FR30 audit/SLA): `{ id, user_id → auth.users, requested_at,
+  verified_at, completed_at null, status }` — drives the deletion request path (see
+  Authentication & Security).
 - **Ownership is uniform across tiers (no nullable owner, no separate session token).**
   Anonymous users are real **Supabase anonymous-auth** users, so every document —
   anonymous or premium — is owned by an `auth.uid()`. Anonymous diagrams are therefore
@@ -253,23 +267,30 @@ implementation story**.
   email+password (bcrypt default, NFR-S5); Google + GitHub OAuth fast-follow (FR26).
 - **Session model (browser-held, hardened — keeps direct CRUD).** `supabase-js` runs in
   the browser and makes direct, RLS-protected PostgREST calls (preserves the hybrid
-  topology — no BFF). To honor NFR-S6 without a full proxy: the **short-lived access token
-  lives in memory only** (module scope, never `localStorage`), and the **long-lived
-  refresh token lives in an httpOnly/Secure/SameSite=Lax cookie** owned by a thin
-  `/api/auth/*` Worker route (set on sign-in/OAuth-callback, rotated on refresh, cleared
-  on sign-out). On load / access-token expiry the SPA calls the Worker refresh route,
-  which reads the httpOnly refresh cookie, exchanges it with Supabase, and returns a fresh
-  in-memory access token. This fits the "Workers own the secret-holding paths" principle
-  (the refresh token is the secret). Compensating controls: strict CSP, short access-token
-  TTL, refresh rotation. Authorization always uses verified `getUser()`, never
-  unverified `getSession()`.
-  *(Rejected alternative: a Worker BFF proxying all CRUD would put the whole session in
-  httpOnly cookies but contradicts the locked direct-CRUD/hybrid topology and adds latency
-  + code; plain `localStorage` tokens were rejected as they violate NFR-S6.)*
-- **Access control:** read-by-slug is a capability (unguessable ≥64-bit slug, NFR-S2)
-  served via a `SECURITY DEFINER` RPC `get_shared_document(slug)`; edit/delete via RLS
-  (`owner_id = auth.uid()`); `is_anonymous` JWT claim separates tiers; `visibility`
-  gates premium share permissions (FR25).
+  topology — no BFF). The **short-lived access token lives in memory only** (module scope,
+  never `localStorage`), and the **long-lived refresh token lives in an
+  httpOnly/Secure/SameSite=Lax cookie** owned by a thin `/api/auth/*` Worker route (set on
+  sign-in/OAuth-callback, rotated on refresh, cleared on sign-out). On load / access-token
+  expiry the SPA calls the Worker refresh route, which reads the httpOnly refresh cookie,
+  exchanges it with Supabase, and returns a fresh in-memory access token. The refresh token
+  (the persistent secret) fits the "Workers own the secret-holding paths" principle.
+  Authorization always uses verified `getUser()`, never unverified `getSession()`.
+- **⚠️ Accepted deviation from NFR-S6 (ratified 2026-06-01).** NFR-S6 reads "session tokens
+  are HTTP-only." The **access token is browser-JS-readable (in memory)** to enable direct
+  CRUD — a *conscious relaxation*; only the **refresh token is httpOnly**. This is **not
+  claimed as full NFR-S6 compliance.** Compensating controls: strict CSP, short
+  access-token TTL, refresh rotation, in-memory (not `localStorage`) storage. **Action:**
+  annotate NFR-S6 in the PRD to record this acceptance. *(Strict-compliance alternative —
+  a Worker BFF proxying all writes in httpOnly cookies — was rejected as contradicting the
+  locked direct-CRUD/hybrid topology; plain `localStorage` was rejected outright.)*
+- **Access control (incl. editable sharing, FR25):** *read* is a slug capability
+  (unguessable ≥64-bit slug, NFR-S2) via `SECURITY DEFINER get_shared_document(slug)`;
+  *owner* edit/delete via RLS (`owner_id = auth.uid()`). **Non-owner editable shares**
+  (FR25) go through `SECURITY DEFINER update_shared_document(slug, grantToken, patch)`,
+  which validates a live (non-revoked) `edit` grant in `document_grants` and writes —
+  owner-only RLS otherwise blocks recipients, so the **grant token is the edit capability**
+  (revocable, rate-limited, premium-gated). `is_anonymous` JWT claim separates tiers;
+  `visibility` (`private`/`link-view`) gates whether the bare slug is readable.
 - **Encryption at rest = Supabase disk-level AES-256 + RLS + unguessable slugs + TLS
   1.2+** (NFR-S1/S4). `noindex/nofollow` + robots exclusion on all `/d/*` (NFR-S3).
 - **Rate limiting** on Worker endpoints (Hono middleware) + Supabase Auth limits
@@ -281,7 +302,15 @@ implementation story**.
   `auth.users` row last. DB-level `ON DELETE CASCADE` from `auth.users` covers
   `documents`/`subscriptions` as a backstop. Error-log PII (Sentry) is handled by bounded
   retention + scrub. **At launch this runs as a documented manual runbook** invoking the
-  routine; the **self-serve UI is a fast-follow** (the cascade itself is specified now).
+  routine; the **fully-automated self-serve flow is a fast-follow** (the cascade itself is
+  specified now).
+- **Deletion *request path* (launch-ready, FR30/NFR-S8).** Execution may be manual at
+  launch, but the **request intake is not**: an in-app "Request account deletion" action in
+  premium settings (documented support address as fallback) requires **re-authentication
+  (owner verification)**, writes a `deletion_requests` row (**audit trail**) that **starts
+  the ≤30-day SLA clock**, and notifies the founder. The founder runs the cascade within
+  SLA and marks the request `completed`. So intake + verification + audit + SLA exist from
+  day one; only the end-to-end automation is deferred.
 
 ### API & Communication Patterns
 
@@ -303,6 +332,15 @@ implementation story**.
   staleness is explicitly acceptable in v1** (PRD §Real-Time: recipient view is
   read-once-then-cache, updates seen on reload), so the trigger primarily guarantees
   delete/owner-action freshness rather than live edit propagation.
+- **Retention touch (closes the cache-vs-retention gap).** Because edge-cache *hits* bypass
+  Postgres, `last_accessed_at` would never bump for actively-viewed diagrams → the ≥90-day
+  cleanup (NFR-R3) could reap a live anonymous diagram. Fix: on every recipient read (hit
+  **or** miss) the Worker fires an **async, sampled `touch_document(slug)`** (fire-and-forget;
+  bumps `last_accessed_at` at most ~once/hour/slug to avoid write amplification). Retention
+  is measured by real access, not by cache state.
+- **Editable-share writes (FR25)** use `supabase.rpc('update_shared_document', {slug,
+  grantToken, patch})` (PostgREST RPC, stays in the data plane — no extra Worker); the write
+  fires the same `documents` trigger → cache purge. Rate-limited + size-capped in the RPC.
 - **Contracts:** shared Zod schemas type-check Worker payloads and the engine
   `ViewState`. Consistent JSON error envelope; client errors surfaced via TanStack
   Query. Optimistic UI on create/save/share (NFR optimistic), debounced save (~500ms).
@@ -344,6 +382,11 @@ implementation story**.
   PostHog; retention ≥30 days (NFR-M5).
 - **Scaling:** edge-cached recipient read shields Postgres; 10× spike = Workers
   autoscale + cache, with Supabase compute tier as the one config dial (NFR-Sc1/Sc2).
+- **Backup & DR (NFR-R5):** Supabase **Pro tier** = daily automated backups (PITR an
+  optional add-on for tighter RPO). A **quarterly restore-test runbook — owned by the
+  founder** — restores the latest backup to a scratch project and verifies integrity. The
+  Cloudflare/edge tier is **stateless** (no backup); any R2 artifacts rely on bucket
+  versioning. Backup tier + restore cadence + owner are recorded in the ops runbook.
 - **Repo:** pnpm workspaces — `packages/render`, `packages/shared`, `apps/web` (the SPA +
   its Cloudflare Worker under `apps/web/worker/`), detailed in step-06.
 
@@ -543,7 +586,7 @@ mermaidweb/
 │       │   │   ├── disclosure/                 # FR6–11: collapse/focus/path/depth controls
 │       │   │   ├── palette/                    # FR12–13: cmdk fuzzy search
 │       │   │   ├── minimap/                    # FR14
-│       │   │   ├── share/                      # FR22–25
+│       │   │   ├── share/                      # FR22–25: mint/revoke view & edit grant links
 │       │   │   ├── export/                     # FR29: PNG/SVG/PDF w/ collapse state
 │       │   │   ├── account/                    # FR20,28,30
 │       │   │   └── auth/                       # FR16–19,26: anon + signup + claim
@@ -572,7 +615,8 @@ mermaidweb/
 │
 ├── supabase/
 │   ├── config.toml                            # CLI local stack
-│   └── migrations/                            # SQL: documents, subscriptions, RLS, get_shared_document RPC,
+│   └── migrations/                            # SQL: documents, document_grants, subscriptions, deletion_requests,
+│                                              #      RLS, get_shared_document + update_shared_document + touch_document RPCs,
 │                                              #      documents UPDATE/DELETE webhook → cache-purge, ON DELETE CASCADE
 │
 └── docs/architecture/**                       # existing as-built engine docs (unchanged)
@@ -616,12 +660,15 @@ mermaidweb/
   (built); UI triggers in `features/disclosure`; state via `diagram-store` ↔ controller
   `viewStateChange`. On non-flowchart blocks the controls render disabled-with-explanation
   (E2E-tested).
+- **Sharing capability (FR22–25):** `features/share` mints/revokes `document_grants`
+  (view/edit tokens, direct RLS); recipients read via the slug and edit via
+  `update_shared_document` RPC validating an `edit` grant.
 - **Export with collapse state (FR29):** `features/export` reads current `view_state` +
   `controller.export(fmt)`.
-- **Account-data deletion (FR30/NFR-S8):** `features/account` triggers →
-  `worker/routes/account.ts` cascade (documents + per-slug cache purge, subscriptions +
-  processor cancel, PostHog person, `auth.users`). Manual runbook at launch; self-serve UI
-  is a fast-follow.
+- **Account-data deletion (FR30/NFR-S8):** request via `features/account` (re-auth →
+  `deletion_requests` row, audit + SLA) → execution via `worker/routes/account.ts` cascade
+  (documents + per-slug cache purge, subscriptions + processor cancel, PostHog person,
+  `auth.users`). Manual runbook drives execution at launch; intake/audit/SLA live from day one.
 
 ### Integration Points & Data Flow
 
@@ -638,11 +685,19 @@ driven; the client does not purge). Edit staleness for recipients is acceptable 
 
 **Recipient cold path:** `GET /api/d/:slug` (Hono Worker, edge-cached) → `get_shared_document`
 RPC → document JSON → SPA hydrates → engine `parseToIR → layout → renderFull` →
-author's saved `view_state` applied. Lazy-load CodeMirror / mermaid-fallback only if needed.
+author's saved `view_state` applied. The Worker also fires an async sampled
+`touch_document(slug)` so cached views still count toward retention. Lazy-load CodeMirror /
+mermaid-fallback only if needed.
 
-**Account-deletion path:** `features/account` → `worker/routes/account.ts` (service role) →
-delete owned documents (+ purge each slug) → cancel/delete subscription at processor +
-local row → PostHog person delete → delete `auth.users`. Runs via manual runbook at launch.
+**Editable-share write path (FR25):** recipient on an `edit` link → `supabase.rpc
+('update_shared_document', {slug, grantToken, patch})` → RPC validates a live `edit` grant →
+write → `documents` trigger → cache purge. (Owner edits use the direct RLS path above.)
+
+**Account-deletion path:** request → in-app "Request account deletion" (re-auth) writes a
+`deletion_requests` row (audit + ≤30-day SLA) → execution: `worker/routes/account.ts`
+(service role) deletes owned documents (+ purge each slug) → cancels/deletes subscription at
+processor + local row → PostHog person delete → deletes `auth.users` → marks request
+`completed`. Manual runbook drives execution at launch; intake/audit/SLA are live from day one.
 
 **External integrations:** Supabase (data plane), Cloudflare (edge/host), PostHog (analytics),
 Sentry (errors), payment processor (Wave-1.1; processor chosen just-in-time, isolated to the
@@ -689,7 +744,9 @@ expressible in the structure as drawn.
 - Navigation FR12–15a → `features/{palette,minimap}`, engine pan/zoom, Renderer Router +
   lazy mermaid viewer.
 - Persistence/session FR16–21 → Supabase anonymous auth, `documents` + RLS, slug, claim.
-- Sharing FR22–25 → slug capability + edge-cached Worker read + `visibility`.
+- Sharing FR22–25 → slug = view capability + edge-cached Worker read; **editable shares
+  (FR25) via `document_grants` edit tokens + `update_shared_document` RPC** (non-owner write
+  path; owner RLS otherwise blocks recipients).
 - Account/premium FR26–30 → auth/OAuth, themes, `controller.export` (collapse state), deletion.
 - Observability FR39–41 → PostHog + analytics Worker, verified pre-launch.
 - FR31–38 (AI, Code Connect) → correctly **seam-only** (Waves 1.2/1.3): premium auth +
@@ -700,10 +757,13 @@ expressible in the structure as drawn.
   optimistic save + 350KB budget with code-splitting. P3/P4/P5/P8 → client-side engine +
   **CI perf-budget gate** vs 200/500/1000-node fixtures.
 - Security S1–S11 → disk-level encryption + RLS + ≥64-bit slugs + noindex/robots + TLS +
-  bcrypt + httpOnly **refresh-cookie** sessions (in-memory access token) + SAQ-A hosted
-  checkout + ≤30-day deletion cascade + weekly dep scan + (1.2) no-train LLM posture.
-- Reliability R1–R6 → Supabase durability/backups, slug stability (no 404 except owner
-  delete), `last_accessed_at`-driven ≥90-day retention, optimistic-with-rollback degradation.
+  bcrypt + SAQ-A hosted checkout + ≤30-day deletion cascade + weekly dep scan + (1.2)
+  no-train LLM posture. **NFR-S6 is partial by ratified decision:** refresh token is
+  httpOnly; access token is in-memory (accepted deviation — PRD annotation pending).
+- Reliability R1–R6 → **Supabase Pro daily backups + quarterly restore-test runbook
+  (NFR-R5)**, slug stability (no 404 except owner delete, NFR-R2), `last_accessed_at`-driven
+  ≥90-day retention **with the Worker retention-touch on cached reads**, optimistic-with-
+  rollback degradation.
 - Scalability Sc1–Sc2 → edge cache shields Postgres; Workers autoscale; Supabase tier = the
   one config dial.
 - Maintainability M1–M5 / Cost C1–C4 → automated CI/CD, ≤30-min local (Supabase CLI + pnpm),
@@ -734,8 +794,10 @@ expressible in the structure as drawn.
 3. **Net-new (specced, not built):** command palette, minimap, Renderer Router, mermaid
    viewer-fallback — expected at architecture stage; flagged so they aren't assumed done.
 4. **Integration points now specified, need focused tests:** the cache purge path
-   (Supabase `documents` write-trigger → `/internal/cache/purge`; delete-eviction per NFR-R2)
-   and `view_state` fence-ID stamping + orphan reconciliation (multi-block).
+   (Supabase `documents` write-trigger → `/internal/cache/purge`; delete-eviction per NFR-R2);
+   the sampled retention-touch (`touch_document`); the editable-share RPC
+   (`update_shared_document` grant validation + rate-limit); and `view_state` fence-ID
+   stamping + orphan reconciliation (multi-block).
 
 **Nice-to-have (later):** elkjs "Adaptive" layout, version history / diff view, app-level
 field encryption, self-serve account-deletion UI — all deferred by design.
@@ -769,6 +831,23 @@ in this revision:
 
 Plus a governance note: the implementation sequence explicitly **supersedes** the PRD's
 pre-spike build order (rationale in Decision Impact Analysis).
+
+**Second-review corrections (2026-06-01).** A follow-up review surfaced six more, all resolved:
+1. *Editable sharing unauthorized (FR25)* → added `document_grants` (view/edit capability
+   tokens) + `update_shared_document` SECURITY DEFINER RPC validating an `edit` grant
+   (owner-only RLS otherwise blocks recipients). The grant token is the revocable edit
+   capability.
+2. *Session relaxes NFR-S6* → **ratified** as an explicit accepted deviation (in-memory
+   access token; httpOnly refresh token); no longer claimed as S6-compliant; PRD NFR-S6
+   annotation recommended.
+3. *Cached reads break ≥90-day retention* → Worker fires an async sampled
+   `touch_document(slug)` on every recipient read (hit or miss), ~once/hour/slug.
+4. *Deletion lacked a request path* → `deletion_requests` table + in-app re-auth'd intake
+   (audit trail + ≤30-day SLA clock); execution still manual at launch.
+5. *Backup/restore unarchitected (NFR-R5)* → Supabase Pro daily backups + founder-owned
+   quarterly restore-test runbook; edge tier stateless.
+6. *Payment timing vs PRD Open Decision #5* → recorded as an **intentional deferral**; action
+   to update Open Decision #5's trigger to "before premium milestone."
 
 ### Architecture Completeness Checklist
 
