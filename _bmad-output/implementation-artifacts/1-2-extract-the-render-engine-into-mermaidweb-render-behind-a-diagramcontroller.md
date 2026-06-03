@@ -15,7 +15,7 @@ so that the validated engine is reusable under React without React ever reconcil
 1. **Migration + public API (AR2).**
    **Given** `spike6/src/`
    **When** it is migrated into `packages/render/src` (git history preserved)
-   **Then** the public API barrel exposes `parseToIR`, `layout`, `renderFull`, `attachDrag`, `deriveEffectiveIR`, and a `DiagramController` facade with `mount`/`destroy`/`setSource`, commands (`focus`/`path`/`collapse`/`expand`/`setDepth`/`panTo`/`resetLayout`/`setTheme`/`export`), and events (`viewStateChange`/`select`/`parseError`/`ready`).
+   **Then** the public API barrel exposes `parseToIR`, `layout`, `renderFull`, `attachDrag`, `deriveEffectiveIR`, and a `DiagramController` facade with `mount`/`destroy`/`setSource`, commands (`focus`/`path`/`collapse`/`expand`/`setDepth`/`panTo`/`resetLayout`/`setTheme`/`setEdgeMode`/`export`), and events (`viewStateChange`/`select`/`parseError`/`ready`).
 
 2. **No behavior change + no app coupling.**
    **Given** the extracted engine
@@ -65,6 +65,7 @@ so that the validated engine is reusable under React without React ever reconcil
     - `setDepth(n)` → drive collapse flags via `computeDepths`/`maxDepth` (depth slider logic; no new layout).
     - `focus(nodeId)` / `path(a, b)` → `attachFocus`/`attachPath` overlay logic (pure adjacency + `setEmphasis`; **no relayout** — keep this property).
     - `panTo(...)` / `resetLayout()` → existing pan + reset (resetLayout re-runs `layout()` to fully-expanded default).
+    - `setEdgeMode('side-aware'|'dagre'|'astar')` → **wire to EXISTING edge logic** (`edgeSettings.edgeMode` + `astarSettings.enabled` in the migrated `edgeSettings.ts`/`astarSettings.ts`/`routing.ts`/`astar.ts`), then trigger the same re-render/re-route cycle collapse already uses (the verified cycle's `(optional A* route)` step). This is **behavior-preserving** (the three modes already exist in spike6, driven by harness toggles) — it is NOT a net-new seam like `setTheme`/`export`. **Scope for THIS story:** expose the command + wire it to the existing modes so the facade surface is complete (AR2); the **product toggle UI, per-doc persistence, lazy-load, and the A\*-on perf gate are Story 1.12** (FR15b/AR19) — do not build them here. [Source: epics.md AR19; docs/architecture/04-interaction-and-routing.md §3–4]
   - [ ] **Events → NET-NEW emitter layer (the engine has NO events today):** add a small typed event emitter and emit:
     - `ready` after first successful render.
     - `parseError` by wrapping `parseToIR` in try/catch (today `entry-editor.ts` catches and writes to a DOM bar — replace that with an emitted event; keep last-good render).
@@ -74,7 +75,7 @@ so that the validated engine is reusable under React without React ever reconcil
   - [ ] Controller imports **nothing app-side** — no React/Supabase/Zustand (AC #2). It MAY import `@mermaidweb/shared` for the `ViewState` schema (shared types are not "app-side").
 
 - [ ] **Task 4 — Versioned `ViewState` Zod schema in `packages/shared` (AC: #4)**
-  - [ ] Add `packages/shared/src/schemas/view-state.ts`: a **versioned** Zod schema modelling the persisted overlay `{ version, collapsed: string[], depth?: number, pins: Record<nodeId, {x,y}> }` (per the data model, keyed within a fence's slice). Export the inferred `ViewState` type.
+  - [ ] Add `packages/shared/src/schemas/view-state.ts`: a **versioned** Zod schema modelling the persisted overlay `{ version, collapsed: string[], depth?: number, pins: Record<nodeId, {x,y}>, edgeMode?: 'side-aware'|'dagre'|'astar' }` (per the data model, keyed within a fence's slice). Export the inferred `ViewState` type. **Include `edgeMode?` now** (FR15b/AR19) so Story 1.12 does not have to bump the schema version later; the controller applies it on mount (sets `edgeSettings.edgeMode`/`astarSettings.enabled`) and emits it in `viewStateChange`, while the full A\* product UX stays in Story 1.12.
   - [ ] The controller **consumes** this schema: `setViewState(vs)` applies it to the IR (set `collapsed` flags, depth, pins) on mount; `viewStateChange` emits a validated `ViewState`. The engine's internal IR flags are unchanged (no behavior change) — the controller is the **translation seam** between the persisted shape and the engine's internal representation.
   - [ ] **No duplicate validators** anywhere (AR5): this schema is the single source; `packages/render` imports it from `@mermaidweb/shared`. (`packages/shared` graduates from its 1.1 shell here.)
 
@@ -98,7 +99,7 @@ This is the **FIRST implementation priority** and build-order step 1: extract th
 
 **In scope:** git-history-preserving migration, the public barrel, the `DiagramController` facade (incl. the net-new event emitter + select + parseError surface), the versioned `ViewState` schema in shared, proof of parity.
 
-**Out of scope (later):** perf fixtures/gate (1.3); the React `<DiagramCanvas>` binding + Zustand (1.4); the disclosure *UI* (1.5–1.9 — the engine logic exists; only controller wiring here); full theming (Epic 4, AR13); full SVG-export-with-collapse-state (Epic 4, FR29); command palette/minimap (1.10/1.11). The controller exposes `setTheme`/`export` as **seams**, nothing more.
+**Out of scope (later):** perf fixtures/gate (1.3); the React `<DiagramCanvas>` binding + Zustand (1.4); the disclosure *UI* (1.5–1.9 — the engine logic exists; only controller wiring here); the **A\* routing product feature** (toggle UI, per-doc persistence, lazy-load, A\*-on perf gate → Story 1.12, FR15b/AR19 — here only the `setEdgeMode` command wired to the existing modes + the `edgeMode?` schema field); full theming (Epic 4, AR13); full SVG-export-with-collapse-state (Epic 4, FR29); command palette/minimap (1.10/1.11). The controller exposes `setTheme`/`export` as **seams**, nothing more.
 
 ### Verified current engine state (from a full spike6 survey — trust these facts)
 
@@ -113,7 +114,7 @@ This is the **FIRST implementation priority** and build-order step 1: extract th
 ### Architecture compliance (binding)
 
 - **Engine boundary:** `@mermaidweb/render` is framework-agnostic plain TS that owns its SVG subtree; **React never reconciles it** (the binding lands in 1.4). The sole bridge will be `DiagramController` (props in · imperative commands · events out). The engine imports nothing app-side. [Source: architecture.md#Frontend Architecture; #Component boundaries]
-- **Facade surface (AR2):** `mount`/`destroy`; commands `focus/path/collapse/expand/setDepth/panTo/resetLayout/setTheme/export`; events `viewStateChange/select/parseError/ready`. Extend the existing camelCase event names; never rename. [Source: architecture.md#Frontend Architecture; #Communication Patterns]
+- **Facade surface (AR2):** `mount`/`destroy`; commands `focus/path/collapse/expand/setDepth/panTo/resetLayout/setTheme/setEdgeMode/export`; events `viewStateChange/select/parseError/ready`. Extend the existing camelCase event names; never rename. `setEdgeMode` wires to the **existing** three edge-routing modes (side-aware default / dagre / opt-in A\*); full A\* product feature is Story 1.12 (FR15b/AR19). [Source: architecture.md#Frontend Architecture; #Communication Patterns]
 - **Casing seam (AR5):** `packages/shared` is the ONLY place mapping/validation lives; the `view_state` schema is **versioned** there. `packages/render` depends on `@mermaidweb/shared` for `ViewState`. No duplicate DTOs/validators. [Source: architecture.md#Format Patterns; #Data boundaries]
 - **Rule 0 (highest priority) + the 05 invariants are inviolable** — see Task 6. Drag stays pin-and-recalculate (never full `layout()` on drag). [Source: architecture.md#Rule 0; docs/architecture/05 §1]
 
@@ -148,7 +149,8 @@ No `project-context.md` exists. Authoritative sources: `epics.md` Story 1.2 (+ A
 ### References
 
 - [Source: _bmad-output/planning-artifacts/epics.md#Story 1.2: Extract the render engine into `@mermaidweb/render` behind a DiagramController]
-- [Source: _bmad-output/planning-artifacts/epics.md — AR2 (engine extraction), AR5 (single DB↔TS / ViewState seam), AR11 (engine conformance Rule 0)]
+- [Source: _bmad-output/planning-artifacts/epics.md — AR2 (engine extraction), AR5 (single DB↔TS / ViewState seam), AR11 (engine conformance Rule 0), AR19 (edge routing modes — `setEdgeMode` + `edgeMode?` schema seam; full feature Story 1.12/FR15b)]
+- [Source: docs/architecture/04-interaction-and-routing.md §3 (three edge modes), §4 (A* orthogonal routing — existing engine modules)]
 - [Source: _bmad-output/planning-artifacts/architecture.md#Frontend Architecture (DiagramController surface, binding, theming seam)]
 - [Source: _bmad-output/planning-artifacts/architecture.md#Implementation Patterns → Rule 0, Naming, Communication, Format Patterns]
 - [Source: _bmad-output/planning-artifacts/architecture.md#Gap Analysis Results → Gap #3 (net-new: theming pipeline, SVG export)]

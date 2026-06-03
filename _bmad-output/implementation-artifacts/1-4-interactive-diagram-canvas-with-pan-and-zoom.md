@@ -73,6 +73,7 @@ This is **build-order step 3** — the first React↔engine binding. It turns th
 
 **Explicitly OUT of scope (later stories — do NOT build):**
 - Collapse/expand, depth, focus, path **UI/controls** → Stories 1.5–1.9 (the engine logic already exists; this story does not surface disclosure controls).
+- Edge-routing (A\*) **toggle/UI** → Story 1.12 (FR15b/AR19). The `setEdgeMode` command exists on the controller from 1.2, but do **not** add an edge-mode toggle to the canvas here.
 - Command palette (1.10), minimap (1.11).
 - CodeMirror editor, live-sync, multi-block Markdown, inline editor errors → Epic 2 (the textarea here is throwaway).
 - Persistence/save/share/slug → Epic 3 (no Supabase here; the canvas is fed by local input only).

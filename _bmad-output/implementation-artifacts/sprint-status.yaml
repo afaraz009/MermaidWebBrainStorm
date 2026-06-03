@@ -48,7 +48,7 @@ tracking_system: file-system
 story_location: _bmad-output/implementation-artifacts
 
 development_status:
-  # Epic 1: Interactive Comprehension Canvas (FR3, FR6-FR15; perf gate; CI/local-run/tests)
+  # Epic 1: Interactive Comprehension Canvas (FR3, FR6-FR15, FR15b; perf gate; CI/local-run/tests)
   epic-1: in-progress
   1-1-scaffold-the-monorepo-and-application-shell: ready-for-dev
   1-2-extract-the-render-engine-into-mermaidweb-render-behind-a-diagramcontroller: ready-for-dev
@@ -61,6 +61,7 @@ development_status:
   1-9-exit-to-default-and-keyboard-triggered-disclosure: backlog
   1-10-command-palette-node-search-and-navigation: backlog
   1-11-minimap-with-viewport-indicator: backlog
+  1-12-opt-in-a-star-orthogonal-edge-routing: backlog
   epic-1-retrospective: optional
 
   # Epic 2: Markdown-Native Authoring Workspace (FR1, FR2, FR4, FR5, FR15a)

@@ -34,6 +34,12 @@ so that the unmeasured-performance risk is closed and any regression blocks rele
    **Then** the perf-gate fails and blocks the deploy
    **And** the GitHub Actions pipeline runs typecheck · lint · Vitest · perf-gate.
 
+5. **A\*-enabled routing variant (FR15b, AR3, AR19; NFR-P1/P2).**
+   **Given** the 200-node fixture with edge routing set to A\* (`view_state.edgeMode = 'astar'`)
+   **When** cold-load first-render and A\* route-time are probed
+   **Then** the gate asserts they meet the first-render / cold-load targets (NFR-P2/P1) **with A\* on** — because a shared A\*-routed diagram re-routes on the recipient's cold load
+   **And** if the A\* variant cannot meet the budget, that is surfaced as the carried perf risk (gate reports it) **before** A\* shares ship in Story 1.12.
+
 ## Tasks / Subtasks
 
 - [ ] **Task 1 — Fixture generator + checked-in 200/500/1000-node fixtures (AC: #1)**
@@ -49,9 +55,10 @@ so that the unmeasured-performance risk is closed and any regression blocks rele
   - [ ] Assert: 200-node ≤ 16 ms p50 **and** ≤ 33 ms p95 (NFR-P3); 500-node ≤ 33 ms p50 (NFR-P4).
   - [ ] 1000-node: render + one basic interaction; assert it **completes without throwing / crashing** (no-crash floor, NFR-P5) — **no** frame-time threshold on this fixture.
 
-- [ ] **Task 3 — Cold-load / first-render probe (AC: #1 support; NFR-P2)**
+- [ ] **Task 3 — Cold-load / first-render probe (AC: #1 support, #5; NFR-P2, NFR-P1)**
   - [ ] Add an engine first-render probe: time `parseToIR → layout → renderFull` cold (no prior render) on the 200-node fixture as the proxy for NFR-P2 (time-to-first-render ≤ 1.5 s).
-  - [ ] **Scope note:** the *full recipient* cold-load TTI (NFR-P1 ≤ 3.0 s — bundle download + network + hydrate) cannot be measured until the app/recipient bundle exists (**Epic 3**). This story measures the **engine render cost** only; record that the end-to-end TTI gate lands with the recipient read path. [Source: architecture.md#Requirements Coverage Validation — Performance]
+  - [ ] **A\*-enabled variant (AC #5, FR15b/AR19):** run the same 200-node first-render probe with `view_state.edgeMode = 'astar'` so the cold render also pays the A\* **batch route cost** (`routeEdgesBatch` over the grid). Assert it meets NFR-P2/P1 with A\* on; if it cannot, the gate **reports it as the carried risk** rather than silently passing — this is what decides whether A\* may ride in a shared doc's `view_state` (Story 1.12) or must stay author-only. Reuse the same clustered fixture (A\* routes against the laid-out node grid, so the cluster shape matters). [Source: docs/architecture/04-interaction-and-routing.md §4 (`routeEdgesBatch`); epics.md AR19]
+  - [ ] **Scope note:** the *full recipient* cold-load TTI (NFR-P1 ≤ 3.0 s — bundle download + network + hydrate) cannot be measured until the app/recipient bundle exists (**Epic 3**). This story measures the **engine render cost** only (side-aware **and** A\*); record that the end-to-end TTI gate lands with the recipient read path. [Source: architecture.md#Requirements Coverage Validation — Performance]
 
 - [ ] **Task 4 — Choose & document the measurement environment (AC: #2, #4)**
   - [ ] Decide the probe runtime (see Dev Notes "Measurement environment — open decision"): a **real headless browser** (Playwright/Chromium or Vitest browser mode) gives fidelity to "frame time"; a DOM shim (happy-dom/jsdom) is lighter and, because the cost here is compute-bound (dagre + bbox), a usable proxy. The engine mutates real SVG DOM, so the runtime must provide a DOM.
@@ -71,13 +78,15 @@ This is **build-order step 2** — the perf harness lands **immediately after th
 
 **Depends on Story 1.2** — the `@mermaidweb/render` package, its public API (`parseToIR`/`layout`/`renderFull`/`deriveEffectiveIR`/`DiagramController`), and the disclosure functions must exist to probe. Do not start 1.3 before 1.2's engine is in `packages/render/src`.
 
-**In scope:** fixtures (200/500/1000, clustered), frame-time + first-render probes, the pass/fail perf gate, the `.github/workflows/ci.yml` pipeline (typecheck·lint·Vitest·perf-gate).
+**In scope:** fixtures (200/500/1000, clustered), frame-time + first-render probes (incl. the **A\*-enabled 200-node first-render/route-time variant**, AC #5), the pass/fail perf gate, the `.github/workflows/ci.yml` pipeline (typecheck·lint·Vitest·perf-gate).
 
 **Out of scope (later):** the React disclosure UI (1.5–1.9 — this probe calls the engine directly); full recipient cold-load TTI incl. bundle/network (Epic 3); Playwright critical-path E2E jobs (first real E2E = Story 2.3 — add that CI stage then); deploy steps (Epic 3, when targets/secrets exist).
 
 ### Why this matters / the risk being closed
 
 From `SPIKE6_COMPLETE.md` §6, restated in doc 06: **every spike fixture is small; the engine is unprofiled past ~20 nodes.** The recursive engine re-runs dagre **per cluster level** and `computeClusterBboxes` **rebuilds maps per call**. The PRD makes **≤16 ms @200 a release gate**. The whole point of this story is to convert "addressed but unmeasured" (architecture Gap #2) into a measured, enforced baseline. [Source: architecture.md#Gap Analysis Results — Gap #2; docs/architecture/06 §4]
+
+**A\* routing is a *second* unprofiled expensive path (AC #5, FR15b/AR19).** With A\* promoted to an MVP opt-in mode, `routeEdgesBatch` runs a binary-heap A\* over a uniform cell grid for **every edge, longest-first** — also never profiled at 200/500 nodes, and worse: a shared A\*-routed diagram pays this on the **recipient's cold load** (NFR-P1/P2), not just on an author's local toggle. So the A\* variant (AC #5) is not a nice-to-have measurement — it is the gate that decides whether A\* may persist into a shared `view_state` (Story 1.12) or must stay author-only. [Source: docs/architecture/04-interaction-and-routing.md §4; architecture.md#Edge routing modes / Correct-course 2026-06-03]
 
 ### Budgets (the gate's assertions)
 
@@ -87,6 +96,7 @@ From `SPIKE6_COMPLETE.md` §6, restated in doc 06: **every spike fixture is smal
 | 500-node | disclosure frame time | ≤ 33 ms p50 | NFR-P4 | **Blocks** |
 | 1000-node | render + basic interaction | **no crash** (no frame budget) | NFR-P5 | **Blocks on crash only** |
 | 200-node | first-render (engine) | proxy for ≤ 1.5 s | NFR-P2 | measure; full TTI → Epic 3 |
+| 200-node, **A\* on** | first-render + A\* route-time | proxy for ≤ 1.5 s / ≤ 3.0 s with A\* on | NFR-P2/P1 | measure + **report risk** (FR15b/AR19; gates A\* shares in 1.12) |
 
 The 1000-node fixture is the **no-crash floor**, explicitly *not* a frame-time gate — do not assert ms on it. [Source: architecture.md#Requirements Coverage Validation; epics.md Story 1.3 AC]
 
@@ -136,7 +146,8 @@ No `project-context.md` exists. Authoritative sources: `epics.md` Story 1.3 (+ A
 ### References
 
 - [Source: _bmad-output/planning-artifacts/epics.md#Story 1.3: Performance harness and CI perf-budget gate]
-- [Source: _bmad-output/planning-artifacts/epics.md — AR3 (perf harness + CI gate), AR17 (CI/CD pipeline)]
+- [Source: _bmad-output/planning-artifacts/epics.md — AR3 (perf harness + CI gate, incl. A*-enabled variant), AR17 (CI/CD pipeline), AR19 (edge routing modes), Story 1.3 AC #5, Story 1.12 (A* feature), FR15b]
+- [Source: docs/architecture/04-interaction-and-routing.md §4 (A* `routeEdgesBatch` grid pathfinding — the unprofiled route cost)]
 - [Source: _bmad-output/planning-artifacts/architecture.md#Infrastructure & Deployment → CI/CD]
 - [Source: _bmad-output/planning-artifacts/architecture.md#Decision Impact Analysis → build order (perf gate = step 2)]
 - [Source: _bmad-output/planning-artifacts/architecture.md#Gap Analysis Results → Gap #2 (performance addressed but unmeasured)]
