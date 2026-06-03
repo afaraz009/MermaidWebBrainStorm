@@ -15,7 +15,7 @@ so that the validated engine is reusable under React without React ever reconcil
 1. **Migration + public API (AR2).**
    **Given** `spike6/src/`
    **When** it is migrated into `packages/render/src` (git history preserved)
-   **Then** the public API barrel exposes `parseToIR`, `layout`, `renderFull`, `attachDrag`, `deriveEffectiveIR`, and a `DiagramController` facade with `mount`/`destroy`, commands (`focus`/`path`/`collapse`/`expand`/`setDepth`/`panTo`/`resetLayout`/`setTheme`/`export`), and events (`viewStateChange`/`select`/`parseError`/`ready`).
+   **Then** the public API barrel exposes `parseToIR`, `layout`, `renderFull`, `attachDrag`, `deriveEffectiveIR`, and a `DiagramController` facade with `mount`/`destroy`/`setSource`, commands (`focus`/`path`/`collapse`/`expand`/`setDepth`/`panTo`/`resetLayout`/`setTheme`/`export`), and events (`viewStateChange`/`select`/`parseError`/`ready`).
 
 2. **No behavior change + no app coupling.**
    **Given** the extracted engine
@@ -42,6 +42,7 @@ so that the validated engine is reusable under React without React ever reconcil
     - **Harness/demo chrome (move to `packages/render/demo/`, NOT in the library barrel):** `entry.ts`, `entry-editor.ts`, `contextMenu.ts`, `contextMenuWiring.ts`, `menuActions.ts`, `gridOverlay.ts`. These are the spike's static-HTML UI; the controller (Task 3) replaces their bootstrap role. Decide per-module; the principle: the library exposes the *engine*, the demo keeps the *harness chrome*.
   - [ ] Move the HTML harness pages (`index.html`, `our-renderer.html`, `mermaid-debug.html`, `editor.html`) + `vite.config.ts` into `packages/render/demo/` so the demo reproduces `our-renderer.html` (AC #2 "harness runs").
   - [ ] Add `packages/render` real `package.json` deps: `mermaid` (parser-only — **pin the version**; `parseToIR` uses Mermaid's non-public `getDiagramFromText`, which is version-fragile and a locked/accepted coupling — do NOT refactor it), `@dagrejs/dagre`, `d3-shape`, `d3-path`. (Replaces the 1.1 shell.)
+  - [ ] **Preserve filenames during the move.** Migrate every module under its current name, including the camelCase modules (`disclosureSettings.ts`, `astarSettings.ts`, `edgeSettings.ts`, `contextMenu.ts`, `contextMenuWiring.ts`, `menuActions.ts`, `gridOverlay.ts`), so `git mv` keeps history and imports intact (Rule 0: don't rename existing conventions). Kebab-case applies to the net-new files (`controller.ts`, `index.ts`, `view-state.ts`); normalizing the camelCase names is an optional follow-up, not part of this story.
   - [ ] **Guardrail:** this is a *move + wrap*, not a rewrite. Do not "simplify," rename, or refactor engine internals — AC #2/#3 require byte-behavior parity. The only net-new code is the barrel, the controller, and the shared ViewState schema.
 
 - [ ] **Task 2 — Public API barrel `src/index.ts` (AC: #1)**
@@ -55,9 +56,10 @@ so that the validated engine is reusable under React without React ever reconcil
   - [ ] Keep disclosure modules (`collapse`/`depth`/`focus`/`path`/`disclosure-overlay`) consumed **internally** by the controller; re-export only if a consumer needs them directly (the architecture barrel names the 5 functions + controller as the surface).
 
 - [ ] **Task 3 — `src/controller.ts` — the `DiagramController` facade (AC: #1, #2)**
-  - [ ] **`mount(el: HTMLElement | SVGElement)`** replicates the `entry.ts` bootstrap (verified 12-step flow) inside the controller, owning its SVG subtree:
-    `parseToIR(source)` → `ir` (source-of-truth, holds `collapsed` flags) → `deriveEffectiveIR(ir)` → `currentEff` → `layout(currentEff)` → sync positions back → `renderFull(currentEff, svg, true, ir)` → attach `pan` + `drag` + collapse/focus/path listeners. Hold `ir`/`currentEff`/adjacency as **controller state** (see `__meta` note in Dev Notes).
-  - [ ] **`destroy()`** calls every detach fn (drag/collapse/pan/focus/path are AbortController-scoped `() => void` returns) and clears the subtree — no leaks.
+  - [ ] **`mount(el: HTMLElement | SVGElement, options?: { source?: string; viewState?: ViewState })`** sets up the SVG subtree the controller owns. When `options.source` is provided it renders immediately via the bootstrap below; when omitted, the controller mounts empty and waits for the first `setSource`. This is the **initial-source path** (no globals; the app passes source in).
+  - [ ] **`setSource(source: string)`** is the (re-)parse-and-render entry point — the verified `entry.ts` bootstrap, parameterized by source instead of a fixture fetch:
+    `parseToIR(source)` (await — it is async) → set as source-of-truth `ir` (holds `collapsed` flags) → `deriveEffectiveIR(ir)` → `currentEff` → `layout(currentEff)` → sync positions back → `renderFull(currentEff, svg, true, ir)` → (re)attach `pan` + `drag` + collapse/focus/path listeners. **Re-apply the current `ViewState`** and **silently drop orphaned node/fence IDs** (collapse flags / pins that no longer resolve), then emit `ready` (first render) / `viewStateChange`. On parse failure, emit `parseError` and keep the last-good render — do not throw. `mount` with an initial `source` simply calls this once. (The deeper *live-edit* hardening of view_state reconciliation against an evolving source is exercised in Story 2.1/AR6; the **mechanism** lives here.)
+  - [ ] **`destroy()`** calls every detach fn (drag/collapse/pan/focus/path are AbortController-scoped `() => void` returns) and clears the subtree — no leaks. Hold `ir`/`currentEff`/adjacency as **controller state** (see `__meta` note in Dev Notes) so `setSource` and the commands can read them.
   - [ ] **Commands → wire to EXISTING engine functions (behavior-preserving):**
     - `collapse(id)`/`expand(id)` → set `sg.collapsed` → the `deriveEffectiveIR → layout → renderFull` re-render cycle (verified `rerenderWithCollapse`).
     - `setDepth(n)` → drive collapse flags via `computeDepths`/`maxDepth` (depth slider logic; no new layout).
@@ -83,7 +85,7 @@ so that the validated engine is reusable under React without React ever reconcil
   - [ ] `pnpm --filter @mermaidweb/render build` + `typecheck` pass; `pnpm -r build` still green (1.1 topo order holds).
 
 - [ ] **Task 6 — Engine conformance review (AC: #3)**
-  - [ ] Confirm preserved: kebab-case module files, camelCase IR fields (`fromCluster`/`toCluster`/`originalPoints`/`labelPos`), PascalCase types, DOM hooks `data-node-id` / `data-subgraph-id` / `data-edge-key` (=`e.id`=`L_<index>`) / `data-surrogate-for`, node `(x,y)`=center → `translate` transform. [Source: architecture.md#Rule 0; survey of renderer.ts]
+  - [ ] Confirm preserved: existing module filenames unchanged (camelCase modules kept as-is per Task 1; net-new files use kebab-case), camelCase IR fields (`fromCluster`/`toCluster`/`originalPoints`/`labelPos`), PascalCase types, DOM hooks `data-node-id` / `data-subgraph-id` / `data-edge-key` (=`e.id`=`L_<index>`) / `data-surrogate-for`, node `(x,y)`=center → `translate` transform. [Source: architecture.md#Rule 0; survey of renderer.ts]
   - [ ] Confirm the **inviolable invariants** (05 §1) are untouched: I1 `fromCluster`/`toCluster` == original endpoint; I2 edge identity = `id` not `(from,to)`; I3 `graph.children()` order; I4 placeholder==drawn rect; I5 `cluster-bbox.ts` single source; I6 `layout()` clears recursive artefacts at entry; I7 flat path byte-identical. [Source: docs/architecture/05-invariants-and-parity.md §1]
 
 ## Dev Notes
@@ -141,7 +143,7 @@ No `project-context.md` exists. Authoritative sources: `epics.md` Story 1.2 (+ A
 ### Project Structure Notes
 
 - Target tree for this story: `packages/render/{src/{...28 modules..., controller.ts, index.ts}, demo/, fixtures/, perf/, package.json, tsconfig.json}` + `packages/shared/src/schemas/view-state.ts`. `perf/` + the 500/1000-node fixtures are **Story 1.3**; `demo/` is the migrated harness. [Source: architecture.md#Complete Project Directory Structure]
-- **Divergence to record:** the architecture tree shows `index.ts` and `controller.ts` as if present; the survey confirms they are net-new — created here, not migrated. Also `mountEl.__meta` is a target convention not yet realized (see Verified state). Note both in Completion Notes.
+- **Divergence to record:** the architecture tree shows `index.ts` and `controller.ts` as if present; the survey confirms they are net-new — created here, not migrated. Also `mountEl.__meta` is a target convention not yet realized (see Verified state). Note these in Completion Notes.
 
 ### References
 

@@ -137,7 +137,7 @@ This document provides the complete epic and story breakdown for MermaidWeb, dec
 *(Technical/infrastructure requirements derived from the Architecture document that materially shape epics and stories. The Architecture's implementation sequence **intentionally supersedes** the PRD's pre-spike build order — engine extraction + perf gate front-loaded before the backend.)*
 
 - **AR1 — Starter / project init (Epic 1, Story 1):** Scaffold the monorepo and the Vite 8 + React 19 + TypeScript SPA via `npm create vite@latest … --template react-ts`, add `@cloudflare/vite-plugin` + `wrangler` (Workers runtime, bindings, SPA fallback `not_found_handling=single-page-application`) and `@supabase/supabase-js`. Project initialization is the first implementation story.
-- **AR2 — Engine extraction (FIRST implementation priority):** Extract `spike6/src/` → `@mermaidweb/render` (framework-agnostic, React-free) behind a `DiagramController` facade (`mount/destroy`; commands `focus/path/collapse/expand/setDepth/panTo/resetLayout/setTheme/export`; events `viewStateChange/select/parseError/ready`) with **no behavior change**, git history preserved. The engine owns its SVG subtree; React never reconciles it.
+- **AR2 — Engine extraction (FIRST implementation priority):** Extract `spike6/src/` → `@mermaidweb/render` (framework-agnostic, React-free) behind a `DiagramController` facade (`mount/destroy/setSource`; commands `focus/path/collapse/expand/setDepth/panTo/resetLayout/setTheme/export`; events `viewStateChange/select/parseError/ready`) with **no behavior change**, git history preserved. The engine owns its SVG subtree; React never reconciles it.
 - **AR3 — Perf harness + CI perf-gate (impl step 2, before backend):** 200/500/1000-node fixtures + frame-time/cold-load probes → a CI perf-budget gate. Frame-time gate blocks on 200-node (NFR-P3) and 500-node (NFR-P4) fixtures; the 1000-node fixture is the no-crash floor (NFR-P5).
 - **AR4 — Monorepo structure (pnpm workspaces):** `packages/render` (engine), `packages/shared` (types + Zod + casing maps), `apps/web` (React SPA + its Cloudflare Worker under `apps/web/worker/`). Feature-first under `apps/web/src/features/<feature>/`. Tests co-located (`*.test.tsx`, Vitest); Playwright E2E under `e2e/`.
 - **AR5 — Single DB↔TS mapping seam:** `packages/shared` is the ONLY place snake_case↔camelCase mapping (Zod transforms / `mapDocument`) and shared validation occur. No DTO redefinition or casing leak in app/engine code.
@@ -263,7 +263,7 @@ So that the validated engine is reusable under React without React ever reconcil
 
 **Given** `spike6/src/`
 **When** it is migrated into `packages/render/src` (git history preserved)
-**Then** the public API barrel exposes `parseToIR`, `layout`, `renderFull`, `attachDrag`, `deriveEffectiveIR`, and a `DiagramController` facade with `mount`/`destroy`, commands (`focus`/`path`/`collapse`/`expand`/`setDepth`/`panTo`/`resetLayout`/`setTheme`/`export`), and events (`viewStateChange`/`select`/`parseError`/`ready`) (AR2).
+**Then** the public API barrel exposes `parseToIR`, `layout`, `renderFull`, `attachDrag`, `deriveEffectiveIR`, and a `DiagramController` facade with `mount`/`destroy`/`setSource`, commands (`focus`/`path`/`collapse`/`expand`/`setDepth`/`panTo`/`resetLayout`/`setTheme`/`export`), and events (`viewStateChange`/`select`/`parseError`/`ready`) (AR2).
 
 **Given** the extracted engine
 **When** the existing harness and fixtures run
