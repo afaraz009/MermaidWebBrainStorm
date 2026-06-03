@@ -134,7 +134,7 @@ The Wave 1 launch *is* the MVP. Sub-staged inside Wave 1 is a 3-wave-within-V1 r
 *Premium tier:*
 - Save to account (auth ships here; anonymous diagrams claimable on signup)
 - Share with permissions (view-only vs. editable)
-- Export to PNG / SVG / PDF with collapse states preserved
+- Export to SVG with collapse states preserved (PNG / PDF are a post-launch fast-follow)
 - Custom themes / branding
 
 **Wave 1.2 — AI Generation Premium (ships after 1.1 validates):**
@@ -240,16 +240,16 @@ Earned features for once Wave 1 has validated audience:
 
 **Opening Scene:** Friday afternoon. Alex is preparing the architecture review deck for next week's exec presentation. He needs to export the system diagram as a PDF page in the deck — and critically, he needs the exported version to show the diagram in the *collapsed* state he uses when presenting (top-level only, with the auth subsystem expanded because that's the focus of the review). In mermaid.live, an export is just the fully-expanded SVG. Useless.
 
-**Rising Action:** He clicks Export. A modal explains: PNG / SVG / PDF export with current collapse states preserved is a premium feature. The pricing is shown — $9/mo. He has six diagrams currently saved anonymously in this browser, which he cares about; he'd like to share next week's prepared diagram with the exec team using a view-only permission so they can interact but not edit.
+**Rising Action:** He clicks Export. A modal explains: export with current collapse states preserved is a premium feature (SVG at the Wave 1.1 launch; PNG / PDF a fast-follow). The pricing is shown — $9/mo. He has six diagrams currently saved anonymously in this browser, which he cares about; he'd like to share next week's prepared diagram with the exec team using a view-only permission so they can interact but not edit.
 
-**Climax:** Three concrete needs converge in a single afternoon: persistence (claim his anonymous diagrams), share permissions (view-only for execs), export with collapse states (the deck). All three are premium features. He signs up. His anonymous diagrams claim into his account. He exports the PDF with the collapse state baked in. The exec deck looks better than any architecture deck the team has shipped.
+**Climax:** Three concrete needs converge in a single afternoon: persistence (claim his anonymous diagrams), share permissions (view-only for execs), export with collapse states (the deck). All three are premium features. He signs up. His anonymous diagrams claim into his account. He exports the diagram with the collapse state baked in — **SVG at the Wave 1.1 launch; the PNG/PDF he ultimately wants for the slide is a post-launch fast-follow (see FR29)**. Even as SVG, the collapse-state-preserving export already beats mermaid.live's fully-expanded dump — which is the actual differentiator. The exec deck looks better than any architecture deck the team has shipped.
 
 **Resolution:** Alex pays for two months. Whether he stays at month three depends on whether he hits the same set of triggers regularly — which depends on whether his usage patterns are persistent or episodic. *That's the F1a retention question, surfacing again at the premium tier.*
 
 **Capabilities revealed:**
 - Premium signup/auth with anonymous-diagram claim flow
 - Share permissions (view vs. edit roles)
-- Export to PNG / SVG / PDF with collapse states preserved
+- Export to SVG with collapse states preserved (PNG / PDF are a post-launch fast-follow)
 - Custom themes / branding for shared and exported outputs
 - Premium pricing presented in-context at the moment of need (pull, not push)
 
@@ -299,13 +299,13 @@ User-pasted Mermaid diagrams will frequently contain **non-public internal archi
 When premium ships, the bar is "boring, correct, and unsurprising" — not novel:
 - Email + password with industry-standard hashing (argon2id or bcrypt with a current cost factor)
 - Optional OAuth (Google + GitHub at minimum — both are first-class for the engineer audience)
-- Session tokens are HTTP-only, secure, SameSite=Lax minimum
+- Session tokens are HTTP-only, secure, SameSite=Lax minimum *(see NFR-S6 for the ratified access-token deviation — refresh token httpOnly, access token in-memory)*
 - Rate-limited login and password-reset endpoints
 - No SMS-based 2FA; if 2FA ships in v1, it is TOTP-based
 
 ### Payment Processing
 
-Premium subscriptions go through a third-party processor (Stripe or Paddle — chosen at architecture phase). MermaidWeb never directly handles or stores card numbers. PCI-DSS scope is reduced to **SAQ-A** (the lightest tier), achieved by ensuring the payment form is hosted by the processor (Stripe Elements / Paddle Checkout overlay), not embedded as raw form fields on MermaidWeb's domain.
+Premium subscriptions go through a third-party processor (Stripe or Paddle — chosen just-in-time, **before the premium milestone**, not as an architecture-phase blocker; see Open Decision #5). MermaidWeb never directly handles or stores card numbers. PCI-DSS scope is reduced to **SAQ-A** (the lightest tier), achieved by ensuring the payment form is hosted by the processor (Stripe Elements / Paddle Checkout overlay), not embedded as raw form fields on MermaidWeb's domain.
 
 **Implication for build:** the processor's hosted-checkout integration is the only acceptable shape. Custom-styled card input forms that touch card data are out of scope and out of policy.
 
@@ -500,7 +500,7 @@ Content marketing, keyword strategy, structured data, sitemap optimization — d
 ### Implementation Considerations
 
 - **Stack-level choices deferred to architecture phase**, not locked in this PRD: front-end framework, state management, renderer (the blocking decision), backend stack, database, hosting, *and final workspace layout/pane count*. The PRD constrains the *shape* of decisions (SPA, backend-from-day-one, no public indexing of diagrams, performance budgets), not specific technologies or pane counts.
-- **Build order from brainstorm reaffirmed (with spike re-scoped 2026-05-08):**
+- **Build order from brainstorm reaffirmed (with spike re-scoped 2026-05-08).** ⚠️ **Superseded for the post-spike build by `_bmad-output/planning-artifacts/architecture.md` §Decision Impact Analysis (2026-06-01):** since the engine is already built (spike6) and the load-bearing residual risk is *unmeasured performance*, the architecture front-loads engine extraction + the CI perf-gate **before** the backend skeleton. The pre-spike sequence below is retained for context; the architecture's order is authoritative where they differ.
   1. Architecture validation spike — 2–3 hours, validates the provisionally-resolved SVG + parser-only stack against a representative flowchart with nested subgraphs and drag interaction (replaces the 1–2-weekend bake-off; the bake-off question was resolved during the renderer-research session)
   2. Backend skeleton — anonymous diagram records, short URL generator, session token, share endpoint (1 weekend)
   3. Native flowchart pipeline — parser adapter, IR normalizer, dagre layout, render model, SVG renderer (~3–5 weekends with coding-agent assistance)
@@ -533,7 +533,7 @@ This is **not a revenue-validation MVP.** Premium ships in Wave 1.1 to validate 
 
 ### Phase 1 — Wave 1.1: Free Core + Persistence Premium (the MVP launch)
 
-**Build sequence (locked by brainstorm):**
+**Build sequence (locked by brainstorm — ⚠️ superseded for the post-spike order by `architecture.md` §Decision Impact Analysis; see the note under Implementation Considerations above):**
 1. Architecture spike — renderer choice (1–2 weekends)
 2. Backend skeleton — anonymous diagram records, short URL generator, session token, share endpoint (1 weekend)
 3. Disclosure family — collapse → depth slider → focus → path (4–6 weekends, cheapest first)
@@ -570,7 +570,7 @@ All four primary journeys are in scope for Wave 1.1. None are deferred.
 - Email + password auth (with Google + GitHub OAuth as fast-follow)
 - Anonymous → premium claim flow on signup
 - Share permissions (view-only vs. editable)
-- Export to PNG / SVG / PDF with collapse states preserved
+- Export to SVG with collapse states preserved (PNG / PDF are a post-launch fast-follow)
 - Custom themes / branding
 - Stripe or Paddle hosted checkout (PCI SAQ-A scope)
 
@@ -708,7 +708,7 @@ The disclosure family is **flowchart-first by design** (resolved in renderer-res
 - **FR26 [1.1]:** A user can create a premium account using email + password, and over time using OAuth (Google, GitHub) as a fast-follow.
 - **FR27 [1.1]:** A premium user can subscribe, change plan, or cancel via a hosted-checkout flow that does not expose card data to MermaidWeb.
 - **FR28 [1.1]:** A premium user can apply custom themes / branding to their diagrams that propagate to shared and exported outputs.
-- **FR29 [1.1]:** A premium user can export any diagram to PNG, SVG, and PDF formats, with the diagram's current collapse state preserved in the exported artifact.
+- **FR29 [1.1]:** A premium user can export any diagram to **SVG**, with the diagram's current collapse state preserved in the exported artifact. **PNG and PDF export are a post-launch fast-follow** — de-scoped from Wave 1.1 on 2026-06-02 to keep MVP surface small: the native renderer is already SVG, so SVG export is near-free, whereas PNG/PDF rasterization (fonts, paging) is the added work being deferred. (Reconciled with `_bmad-output/planning-artifacts/architecture.md` §Export with collapse state.)
 - **FR30 [1.1]:** A premium user can request deletion of all account data and have it carried out within a documented timeframe.
 
 ### AI-Assisted Generation (Wave 1.2)
@@ -769,7 +769,7 @@ User-pasted content is treated as default-sensitive, even though the product is 
 - **NFR-S3 [1.1]:** All diagram pages return `noindex, nofollow` headers, are excluded from `robots.txt`, and never appear in any sitemap. No diagram is ever surfaced in any public discovery surface.
 - **NFR-S4 [1.1]:** All network traffic uses TLS 1.2 or higher. HTTP requests are redirected to HTTPS.
 - **NFR-S5 [1.1]:** Premium-account passwords are hashed with argon2id (or bcrypt with current-cost factor) and never stored in plaintext or recoverable form.
-- **NFR-S6 [1.1]:** Session tokens are HTTP-only, Secure, and SameSite=Lax minimum. Login and password-reset endpoints are rate-limited.
+- **NFR-S6 [1.1]:** Session tokens are HTTP-only, Secure, and SameSite=Lax minimum. Login and password-reset endpoints are rate-limited. **Accepted deviation (ratified 2026-06-01, recorded 2026-06-02):** the architecture keeps the long-lived **refresh** token in an httpOnly/Secure/SameSite=Lax cookie (compliant) but holds the short-lived **access** token in browser memory (JS-readable, *not* httpOnly) to enable direct RLS-protected CRUD without a BFF — a conscious relaxation, **not** full S6 compliance, with compensating controls (strict CSP, short access-token TTL, refresh rotation, in-memory not `localStorage`). See `_bmad-output/planning-artifacts/architecture.md` §Authentication & Security.
 - **NFR-S7 [1.1]:** Card data never touches MermaidWeb infrastructure; payment is handled by the chosen processor's hosted-checkout flow (PCI-DSS SAQ-A scope).
 - **NFR-S8 [1.1]:** A working data-deletion path exists for premium users, executed within 30 days of request.
 - **NFR-S9 [1.1]:** Dependencies are scanned for known vulnerabilities at least weekly; high-severity vulnerabilities are patched within 7 days of public disclosure.
@@ -832,7 +832,7 @@ The following decisions are deliberately deferred. Each is named here so it does
 | 2 | **Renderer technology** (SVG / Canvas / WebGL) | Architecture spike | Before disclosure-family build (1–2 weekends in) | ✅ **RESOLVED 2026-05-31 — validated by spike6:** SVG + parser-only + dagre + d3-shape (Architecture B). Locked, not just provisional. *Scope note:* the spike validated the **technology choice**, not the performance release gate (200/500/1000-node targets remain unmeasured — Phase-1 risk). See `_bmad-output/planning-artifacts/architecture-decisions-renderer.md`, `docs/architecture/`, and `spike6/SPIKE6_COMPLETE.md`. |
 | 3 | **Workspace layout / pane count** (single, two-pane, multi-pane) | Design phase | Before the workspace-and-editor build (Phase 1 step 4) | Fall back to multi-pane (source / preview / canvas) — the brainstorm leaning, but not locked |
 | 4 | **Wave 1.1 premium pricing** | Founder, pre-launch | Before payment processor integration | Likely $5–15/mo individual, finalized closer to launch |
-| 5 | **Payment processor** (Stripe vs. Paddle) | Founder, architecture phase | Before premium-tier build | Paddle preferred for EU VAT MOSS handling; Stripe acceptable; pick before billing code is written |
+| 5 | **Payment processor** (Stripe vs. Paddle) | Founder | **Before the premium milestone** — just-in-time, *not* an architecture-phase blocker (ratified 2026-06-01: the architecture is processor-agnostic — a webhook Worker + a `subscriptions` row) | Paddle preferred for EU VAT MOSS handling; Stripe acceptable; pick before billing code is written |
 | 6 | **Anonymous diagram retention policy** (NFR-R3) | Founder, pre-launch | Locked before public launch | 90 days from last access (current minimum); may extend to 365 days or indefinite based on storage cost |
 | 7 | **Annotations on nodes** (Consider pile) | Founder, during build | Decide during workspace build, V1.1 or defer | Default: defer to V2 unless an obvious build window appears |
 | 8 | **Diagram diff view** (Consider pile) | Founder, post-launch | Revisit after Wave 1.1 has signal | Default: V2; not part of the comprehension thesis as currently scoped |

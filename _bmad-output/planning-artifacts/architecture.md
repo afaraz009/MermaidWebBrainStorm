@@ -42,13 +42,16 @@ FRs cluster into four surfaces:
   cryptographically random short-URL slugs, recipient-as-first-class-user (same SPA
   bundle), anonymous→premium claim, view/edit share permissions.
 - **Account, premium, observability** (FR26–30, 39–41) — auth, hosted-checkout
-  billing, export to PNG/SVG/PDF **with collapse state preserved**, custom branding,
+  billing, **SVG export with collapse state preserved** (PNG/PDF a post-launch fast-follow), custom branding,
   first-party analytics live before launch.
 
 **Non-Functional Requirements:** 37 NFRs. The architecturally load-bearing ones:
 - *Performance:* recipient cold-load TTI ≤3.0s and first-render ≤1.5s @200 nodes
   (the distribution-loop SLA); disclosure frame time ≤16ms p50 / ≤33ms p95 @200
-  nodes; save→share-URL ≤300ms p50; 350KB initial-bundle budget (from renderer ADR).
+  nodes; save→share-URL ≤300ms p50. (The PRD sets no fixed bundle-size NFR — it gates on
+  the TTI targets above; a self-imposed ~350KB initial-bundle figure is adopted only as an
+  engineering proxy for those targets, **not** as a release gate or an ADR-mandated budget —
+  the renderer ADR explicitly retired the original 350KB framing.)
 - *Security/Privacy:* encryption at rest; ≥64-bit random slugs (no enumeration);
   noindex/no public discovery surface (hard privacy rule); argon2id; PCI SAQ-A via
   hosted checkout only; TLS 1.2+.
@@ -138,7 +141,8 @@ and a Supabase data plane. Not a meta-framework app (SSR rejected — see ration
 - Same Vite/TypeScript toolchain as the engine → the `@mermaidweb/render` package and
   the app share one build/test pipeline (engine extraction stays seamless).
 - React: largest component ecosystem (CodeMirror, cmdk, etc.) + best coding-agent
-  training data for weekend-pace, agent-assisted build; bundle fits the 350KB budget.
+  training data for weekend-pace, agent-assisted build; bundle fits the self-imposed
+  ~350KB initial-bundle proxy (see the Performance note in Requirements Overview).
 - `@cloudflare/vite-plugin` 1.0 makes "SPA + edge Workers bindings" first-class in one
   project, serving the recipient cold-load SLA and viral-spike-by-config NFRs.
 - Supabase as data plane keeps anonymous tokens, encryption-at-rest, RLS, and the
@@ -212,8 +216,8 @@ implementation story**.
   architecture change — the seam supports either.)*
   **Reconciliation with PRD Open Decision #5** (which nominally places the processor choice
   in the *architecture* phase): this is an **intentional deferral**, ratified 2026-06-01.
-  **Action:** update PRD Open Decision #5's trigger to "before premium milestone" so
-  downstream agents don't treat it as a missed architecture-phase decision.
+  **Action (done 2026-06-02):** PRD Open Decision #5's trigger updated to "before the premium
+  milestone" so downstream agents don't treat it as a missed architecture-phase decision.
 
 **Genuinely deferred (post-MVP or later trigger):**
 - App-level field encryption — revisit only on enterprise/regulated demand.
@@ -256,6 +260,11 @@ implementation story**.
   pins{nodeId→{x,y}} }` per block. Reconciled on parse — orphaned IDs dropped silently.
   Pins persisted best-effort; pan/zoom/focus/path are ephemeral.
 - **Shared links open in the author's saved `view_state`.**
+- **`theme` (premium branding, FR28):** `theme jsonb` holds a **versioned theme object**
+  (schema in `packages/shared` — palette, fonts, node/edge/cluster styles, optional
+  logo/watermark). Applied by the engine on render (Frontend → Theming), returned with the
+  document on recipient read (so **shared views are branded**), and inlined into **SVG
+  export** (so branding reaches exported artifacts). `null` = default theme.
 - **Validation:** shared Zod schemas (`packages/shared`) + markdown size cap; Mermaid
   syntax validated client-side (FR5). **Migrations:** Supabase CLI SQL, in-repo.
 - No version-history table in v1 (diff view = V2).
@@ -279,8 +288,8 @@ implementation story**.
   are HTTP-only." The **access token is browser-JS-readable (in memory)** to enable direct
   CRUD — a *conscious relaxation*; only the **refresh token is httpOnly**. This is **not
   claimed as full NFR-S6 compliance.** Compensating controls: strict CSP, short
-  access-token TTL, refresh rotation, in-memory (not `localStorage`) storage. **Action:**
-  annotate NFR-S6 in the PRD to record this acceptance. *(Strict-compliance alternative —
+  access-token TTL, refresh rotation, in-memory (not `localStorage`) storage. **Action
+  (done 2026-06-02):** NFR-S6 annotated in the PRD to record this acceptance. *(Strict-compliance alternative —
   a Worker BFF proxying all writes in httpOnly cookies — was rejected as contradicting the
   locked direct-CRUD/hybrid topology; plain `localStorage` was rejected outright.)*
 - **Access control (incl. editable sharing, FR25):** *read* is a slug capability
@@ -289,10 +298,19 @@ implementation story**.
   (FR25) go through `SECURITY DEFINER update_shared_document(slug, grantToken, patch)`,
   which validates a live (non-revoked) `edit` grant in `document_grants` and writes —
   owner-only RLS otherwise blocks recipients, so the **grant token is the edit capability**
-  (revocable, rate-limited, premium-gated). `is_anonymous` JWT claim separates tiers;
-  `visibility` (`private`/`link-view`) gates whether the bare slug is readable.
+  (revocable, rate-limited, premium-gated). **Premium entitlement** (minting an `edit` grant,
+  custom themes, export) is enforced **server-side against an active `subscriptions.status`**
+  — inside the `SECURITY DEFINER` RPC or an RLS predicate — **never by the `is_anonymous`
+  claim alone**: `is_anonymous` only distinguishes anonymous-vs-registered, and a registered
+  user whose subscription has lapsed must lose premium features (PRD Technical Success #4,
+  "clean free/premium boundary"). The `is_anonymous` JWT claim gates anonymous-vs-registered
+  behaviour; `visibility` (`private`/`link-view`) gates whether the bare slug is readable.
 - **Encryption at rest = Supabase disk-level AES-256 + RLS + unguessable slugs + TLS
-  1.2+** (NFR-S1/S4). `noindex/nofollow` + robots exclusion on all `/d/*` (NFR-S3).
+  1.2+** (NFR-S1/S4). **`X-Robots-Tag: noindex, nofollow` response header on every `/d/*`
+  route** (set in asset/Worker middleware — the SPA-fallback serves a single `index.html`,
+  so the response header, not a client-injected `<meta>` a crawler may ignore, is the
+  load-bearing control) + `robots.txt` `Disallow: /d/` + no sitemap entry (NFR-S3 — a hard
+  privacy rule).
 - **Rate limiting** on Worker endpoints (Hono middleware) + Supabase Auth limits
   (NFR-S6). Dependency scanning weekly (NFR-S9).
 - **Account-data deletion cascade (FR30/NFR-S8, ≤30 days).** A single service-role
@@ -349,7 +367,7 @@ implementation story**.
 
 - **Engine package `@mermaidweb/render` (framework-agnostic)** exposes
   `DiagramController` (`mount/destroy`, commands `focus/path/collapse/expand/setDepth/
-  panTo/resetLayout/export`, events `viewStateChange/select/parseError/ready`). React
+  panTo/resetLayout/setTheme/export`, events `viewStateChange/select/parseError/ready`). React
   binding (`<DiagramCanvas>` / `useDiagram`) lives app-side, extractable to
   `@mermaidweb/render-react` later. **The engine owns its SVG subtree; React never
   reconciles it.**
@@ -359,15 +377,35 @@ implementation story**.
   without React) + TanStack Query 5 (Supabase server state, optimistic).
 - **Routing:** React Router v7 (SPA mode, `ssr:false`).
 - **Editor/preview:** CodeMirror 6 (Mermaid editing, inline errors) + `react-markdown`
-  (remark) preview; live flow = one text field → preview + debounced
-  `controller.setSource()`.
-- **Renderer Router (PRD seam):** flowchart/graph → native pipeline; all other Mermaid
-  types → lazy-loaded full `mermaid` viewer (pan/zoom only, FR15a). **Required UX
-  affordance (FR15a):** on a non-flowchart block the disclosure controls render in a
-  **disabled state with an explanatory tooltip/badge** ("Disclosure is flowchart-only"),
+  (remark) preview; live flow = one text field → preview + debounced **per-fence**
+  `controller.setSource()` (see Multi-block).
+- **Multi-block documents (FR2/FR15a):** one Markdown source can embed **many** ```` ```mermaid ````
+  fences of mixed types. `lib/markdown.ts` produces a **block registry** —
+  `[{ fenceId, type, source }]` (stable `id=…` stamped per fence; `type` detected from the
+  fence's first non-empty line) — the single source of truth for what renders where.
+  `react-markdown` renders each fence as a **mount point**; the **Renderer Router runs per
+  fence**, instantiating **one `DiagramController` per flowchart fence** and **one lazy
+  `mermaid`-viewer per non-flowchart fence**. Each controller owns only its own SVG subtree
+  and binds to its own **`view_state[fenceId]` slice**; a source edit re-stamps the registry
+  and calls `setSource()` on the **affected fence(s) only**. (The controller is **per-fence,
+  not per-document** — the data model's per-fence `view_state`, keyed by fence ID, already
+  assumes exactly this; orphaned fence IDs are reconciled away on parse.)
+- **Renderer Router (PRD seam):** runs **per fence** — flowchart/graph → native pipeline;
+  all other Mermaid types → lazy-loaded full `mermaid` viewer (pan/zoom only, FR15a).
+  **Required UX affordance (FR15a):** on a non-flowchart block the disclosure controls render
+  in a **disabled state with an explanatory tooltip/badge** ("Disclosure is flowchart-only"),
   so fallback diagrams don't look broken — covered by an E2E test asserting the controls
   are disabled-with-explanation. **Code-split** the editor, the mermaid viewer-fallback,
-  and elkjs to protect the 350KB recipient bundle (NFR-P1/P2).
+  and elkjs to keep the recipient bundle within the self-imposed ~350KB proxy that serves
+  the cold-load / first-render TTI targets (NFR-P1/P2 are time-based; the KB figure is our
+  proxy, not the NFR itself).
+- **Theming / branding (FR28, premium):** a document's `theme` (versioned schema in
+  `packages/shared`) is applied by the engine as a **styling API** — `controller.setTheme
+  (theme)` maps theme tokens to **CSS custom properties + style attributes** on the SVG
+  subtree (no relayout). Because the recipient read returns the document's `theme`, **shared
+  views are branded automatically**; and because SVG export **inlines** the resolved theme
+  styles into the serialized artifact, branding **propagates to exports** too — covering
+  FR28's "shared *and* exported outputs". Premium-gated via active `subscriptions.status`.
 
 ### Infrastructure & Deployment
 
@@ -497,7 +535,9 @@ modules `kebab-case.ts`; functions/variables `camelCase`; types/interfaces
 - **Loading:** TanStack Query `isPending`/`isFetching`; skeletons on first load, inline
   spinners on refetch. **Optimistic mutations with rollback** for create/save/share;
   in-flight edits preserved on failure (NFR-R6).
-- **Auth flow:** `signInAnonymously()` on first load if no session (FR16); convert via
+- **Auth flow:** anonymous sign-in is **lazy** — fired on the **first create/persist action**,
+  not on page load (FR16), so read-only recipients never mint `auth.users` rows and recipient
+  cold-load isn't coupled to an auth round-trip; convert via
   `updateUser` on signup (FR19); **authorize only with verified `getUser()`**, never
   `getSession()`.
 
@@ -579,15 +619,15 @@ mermaidweb/
 │       │   ├── main.tsx · app.tsx · router.tsx # React Router v7 (SPA mode)
 │       │   ├── routes/                         # /, /d/:slug, /app, /account, /pricing
 │       │   ├── features/
-│       │   │   ├── workspace/                  # FR1–4: panes + live-sync orchestration
+│       │   │   ├── workspace/                  # FR1–4: panes + live-sync; FR21 per-diagram delete (anon)
 │       │   │   ├── editor/                     # FR1,5: CodeMirror 6 (inline errors)
 │       │   │   ├── preview/                    # FR2: react-markdown
 │       │   │   ├── canvas/                     # FR3,15: <DiagramCanvas> + Renderer Router
 │       │   │   ├── disclosure/                 # FR6–11: collapse/focus/path/depth controls
 │       │   │   ├── palette/                    # FR12–13: cmdk fuzzy search
 │       │   │   ├── minimap/                    # FR14
-│       │   │   ├── share/                      # FR22–25: mint/revoke view & edit grant links
-│       │   │   ├── export/                     # FR29: PNG/SVG/PDF w/ collapse state
+│       │   │   ├── share/                      # FR22–25: view/edit grants; FR24 "create your own"/duplicate
+│       │   │   ├── export/                     # FR29: SVG w/ collapse state (PNG/PDF fast-follow)
 │       │   │   ├── account/                    # FR20,28,30
 │       │   │   └── auth/                       # FR16–19,26: anon + signup + claim
 │       │   ├── components/                     # shared UI primitives
@@ -598,12 +638,12 @@ mermaidweb/
 │       │   │   ├── auth.ts                      # bootstrap + refresh via /api/auth/*
 │       │   │   ├── query-client.ts · query-keys.ts
 │       │   │   ├── markdown.ts                 # fence parse + stable-id stamping
-│       │   │   └── analytics.ts                # PostHog → /api/analytics
+│       │   │   └── analytics.ts                # PostHog → /api/analytics; visitor_id distinct_id + alias→anon uid on create
 │       │   └── styles/
 │       ├── worker/                            # the Cloudflare Worker (Hono)
 │       │   ├── index.ts                        # Hono app
 │       │   ├── routes/
-│       │   │   ├── shared-document.ts           # GET /api/d/:slug (edge-cached)
+│       │   │   ├── shared-document.ts           # GET /api/d/:slug (edge-cached); sets visitor_id + fires recipient_open
 │       │   │   ├── auth.ts                      # /api/auth/* (httpOnly refresh cookie)
 │       │   │   ├── webhooks.ts                  # POST /api/webhooks/:processor
 │       │   │   ├── analytics.ts                 # POST /api/analytics
@@ -662,9 +702,20 @@ mermaidweb/
   (E2E-tested).
 - **Sharing capability (FR22–25):** `features/share` mints/revokes `document_grants`
   (view/edit tokens, direct RLS); recipients read via the slug and edit via
-  `update_shared_document` RPC validating an `edit` grant.
+  `update_shared_document` RPC validating an `edit` grant. **Recipient → creator (FR24):**
+  a "Create your own" / "Duplicate this" affordance in the shared-workspace chrome creates a
+  new recipient-owned document (lazy anon uid, fresh slug) and fires `recipient_became_creator`.
+- **Per-diagram delete (FR21):** a "Delete diagram" action — workspace chrome for the anon
+  owner, `features/account` dashboard for premium — direct RLS DELETE → `documents` DELETE
+  trigger → cache-purge → the slug's one sanctioned 404 (NFR-R2).
 - **Export with collapse state (FR29):** `features/export` reads current `view_state` +
-  `controller.export(fmt)`.
+  `controller.export('svg')` — **SVG at launch** (the renderer is already SVG, so this is a
+  serialize-with-applied-`view_state` path, near-free); PNG/PDF rasterization is a
+  post-launch fast-follow.
+- **Themes / branding (FR28, premium):** `features/account` edits the `theme`; the engine
+  applies it via `controller.setTheme` (renderer styling API), recipient reads return it
+  (branded shares), and SVG export inlines it (branded exports). Gated on active
+  `subscriptions.status`.
 - **Account-data deletion (FR30/NFR-S8):** request via `features/account` (re-auth →
   `deletion_requests` row, audit + SLA) → execution via `worker/routes/account.ts` cascade
   (documents + per-slug cache purge, subscriptions + processor cancel, PostHog person,
@@ -674,8 +725,12 @@ mermaidweb/
 
 **Auth bootstrap:** on load, `lib/auth.ts` calls `/api/auth/refresh`; the Worker reads the
 httpOnly refresh cookie, exchanges it with Supabase, returns a fresh **in-memory** access
-token. If no session, `signInAnonymously()` mints an anonymous uid (refresh cookie set by
-the Worker). All subsequent CRUD is direct supabase-js under RLS.
+token. With no cookie the SPA stays **unauthenticated for read-only browsing** (recipient
+reads use the public `get_shared_document` path and need no session); `signInAnonymously()`
+is **deferred to the first create/persist action** — consistent with the lazy Auth-flow
+process pattern, *not* fired on page load — minting the anon uid then, and the Worker sets
+the refresh cookie as a **persistent** cookie (long Max-Age) so anonymous work survives a
+browser restart (FR17). All subsequent CRUD is direct supabase-js under RLS.
 
 **Author save path:** edit → `workspace` → `diagram-store` (engine deltas) → debounced
 TanStack mutation → `supabase-js` write (optimistic, RLS-scoped to `owner_id`) → the
@@ -683,11 +738,48 @@ Supabase `documents` UPDATE trigger fires `/internal/cache/purge` for that slug 
 driven; the client does not purge). Edit staleness for recipients is acceptable per PRD
 §Real-Time; delete eviction is guaranteed (NFR-R2).
 
+**Diagram delete path (FR21, anonymous *and* premium).** A single per-diagram **"Delete
+diagram"** action — surfaced in the **workspace chrome for the anonymous owner** and in the
+**account dashboard for premium** (FR20) — issues a direct `supabase-js` DELETE under RLS
+(`owner_id = auth.uid()`, identical for anon and premium because ownership is uniform). The
+`documents` **DELETE trigger** fires `/internal/cache/purge`, so the slug stops serving and
+**404s — the one sanctioned 404 (NFR-R2).** This is distinct from the account-wide cascade
+below (FR30): FR21 deletes one diagram; FR30 deletes the whole account.
+
 **Recipient cold path:** `GET /api/d/:slug` (Hono Worker, edge-cached) → `get_shared_document`
 RPC → document JSON → SPA hydrates → engine `parseToIR → layout → renderFull` →
-author's saved `view_state` applied. The Worker also fires an async sampled
-`touch_document(slug)` so cached views still count toward retention. Lazy-load CodeMirror /
+author's saved `view_state` applied. On the same read (hit **or** miss — both bypass the
+client) the Worker, async: (1) sets a **first-party, non-auth `visitor_id` cookie** if absent
+— a random id, persistent, Secure, SameSite=Lax, **not** a Supabase identity; it is the
+analytics correlation id that **exists at open time**, before any anon uid, and is disclosed
+in the cookie notice (first-party only, no ad-tech); (2) fires a sampled `touch_document(slug)`
+(retention); and (3) fires the **server-side `recipient_open` event keyed to `visitor_id`**
+(FR39's distribution-loop leading metric — emitted Worker-side because a cache hit never
+reaches the client). Lazy-load CodeMirror /
 mermaid-fallback only if needed.
+
+**Recipient → creator path (FR24 — the distribution loop's conversion).** Every shared
+workspace shows a one-click **"Create your own"** affordance in the recipient chrome —
+always visible, never behind signup. Two shapes, both producing a **brand-new `documents`
+row owned by the recipient**:
+- **New** (the default, obvious FR24 action) — opens a fresh workspace (`/app`, blank or a
+  starter); nothing is copied.
+- **Duplicate this** (optional "remix") — copies the shared doc's `markdown` (fences
+  **re-stamped** with fresh IDs) and deep-copies the matching `view_state` slices into the
+  new row.
+
+The create action is the trigger for **lazy `signInAnonymously()`** (Auth bootstrap): the
+recipient gets an anon uid *then*, and the new row is written direct via `supabase-js` under
+RLS with `owner_id = that uid` and a fresh `slug`. **Analytics identity bridge (closes the
+attribution gap):** `recipient_open` was keyed to the pre-auth `visitor_id`, which exists from
+the first shared read; at this first-create moment the client issues a PostHog
+**`identify(anonUid)` carrying the prior `visitor_id` as `$anon_distinct_id`** (an alias /
+person-merge), folding the open and the create into **one PostHog person**. Only then does
+**`recipient_became_creator`** (keyed to the anon uid) join back to that visitor's
+`recipient_open` — the recipient→creator conversion the 6-week gate rides on (FR39; PRD
+§Success). Because the Supabase anon uid is **preserved** on any later premium signup
+(`updateUser`), the PostHog identity stays stable across the claim — no second alias is
+needed. The recipient is now a first-class owner (edit / delete / share).
 
 **Editable-share write path (FR25):** recipient on an `edit` link → `supabase.rpc
 ('update_shared_document', {slug, grantToken, patch})` → RPC validates a live `edit` grant →
@@ -743,23 +835,35 @@ expressible in the structure as drawn.
 - Disclosure FR6–11 → `packages/render` (built) + `features/disclosure`.
 - Navigation FR12–15a → `features/{palette,minimap}`, engine pan/zoom, Renderer Router +
   lazy mermaid viewer.
-- Persistence/session FR16–21 → Supabase anonymous auth, `documents` + RLS, slug, claim.
+- Persistence/session FR16–21 → Supabase anonymous auth, `documents` + RLS, slug, claim;
+  **per-diagram delete (FR21)** via in-workspace action (anon) / account dashboard (premium)
+  → DELETE trigger → cache-purge → sanctioned 404 (NFR-R2).
 - Sharing FR22–25 → slug = view capability + edge-cached Worker read; **editable shares
   (FR25) via `document_grants` edit tokens + `update_shared_document` RPC** (non-owner write
-  path; owner RLS otherwise blocks recipients).
-- Account/premium FR26–30 → auth/OAuth, themes, `controller.export` (collapse state), deletion.
-- Observability FR39–41 → PostHog + analytics Worker, verified pre-launch.
+  path; owner RLS otherwise blocks recipients); **recipient "Create your own" / duplicate
+  (FR24)** → new recipient-owned `documents` row + `recipient_became_creator` (see
+  Recipient → creator path).
+- Account/premium FR26–30 → auth/OAuth, **themes (FR28: `controller.setTheme` on render → branded shared *and* SVG-exported outputs)**, `controller.export('svg')` (collapse state; PNG/PDF fast-follow), deletion. **Premium-only writes gate on active `subscriptions.status`, not the `is_anonymous` claim.**
+- Observability FR39–41 → PostHog + `/api/analytics` Worker. Distribution-loop events are
+  designed explicitly: `recipient_open` fires **Worker-side on the cached `/api/d/:slug`
+  read path** keyed to a **pre-auth first-party `visitor_id` cookie** (an edge-cache hit
+  never reaches the client, and no anon uid exists yet at open time); on first create the
+  client **aliases `visitor_id` → the anon uid** (PostHog `identify` with `$anon_distinct_id`)
+  so `recipient_open` and `recipient_became_creator` resolve to one person and the
+  recipient→creator conversion actually computes; verified live pre-launch.
 - FR31–38 (AI, Code Connect) → correctly **seam-only** (Waves 1.2/1.3): premium auth +
   quota hooks land later; no architecture rework required.
 
 **Non-Functional Requirements:**
 - Performance P1/P2/P7 (cold-load, first-render, save→URL) → edge-cached recipient read +
-  optimistic save + 350KB budget with code-splitting. P3/P4/P5/P8 → client-side engine +
-  **CI perf-budget gate** vs 200/500/1000-node fixtures.
+  optimistic save + code-splitting (within the self-imposed ~350KB proxy). P3/P4/P5/P8 →
+  client-side engine + a **CI perf-budget gate**: frame-time budgets block on the 200-node
+  (P3) and 500-node (P4) fixtures per NFR-P8; the 1000-node fixture is the **no-crash floor**
+  (P5), not a frame-time gate.
 - Security S1–S11 → disk-level encryption + RLS + ≥64-bit slugs + noindex/robots + TLS +
   bcrypt + SAQ-A hosted checkout + ≤30-day deletion cascade + weekly dep scan + (1.2)
   no-train LLM posture. **NFR-S6 is partial by ratified decision:** refresh token is
-  httpOnly; access token is in-memory (accepted deviation — PRD annotation pending).
+  httpOnly; access token is in-memory (accepted deviation — PRD annotation applied 2026-06-02).
 - Reliability R1–R6 → **Supabase Pro daily backups + quarterly restore-test runbook
   (NFR-R5)**, slug stability (no 404 except owner delete, NFR-R2), `last_accessed_at`-driven
   ≥90-day retention **with the Worker retention-touch on cached reads**, optimistic-with-
@@ -792,15 +896,20 @@ expressible in the structure as drawn.
    perf-gate + 200/500/1000-node fixtures exist (impl step 2). Carried risk from `docs/
    architecture/06`. The architecture *enables* the proof; it is not yet proven.
 3. **Net-new (specced, not built):** command palette, minimap, Renderer Router, mermaid
-   viewer-fallback — expected at architecture stage; flagged so they aren't assumed done.
+   viewer-fallback, **SVG export** (serialize the live SVG with `view_state` applied —
+   net-new but low-risk; PNG/PDF deferred to a fast-follow), the **recipient "Create your
+   own" / duplicate flow (FR24)**, and the **theming pipeline (FR28: `setTheme` → branded
+   shares + theme inlined into SVG export)** — expected at architecture stage; flagged so
+   they aren't assumed done.
 4. **Integration points now specified, need focused tests:** the cache purge path
    (Supabase `documents` write-trigger → `/internal/cache/purge`; delete-eviction per NFR-R2);
    the sampled retention-touch (`touch_document`); the editable-share RPC
    (`update_shared_document` grant validation + rate-limit); and `view_state` fence-ID
    stamping + orphan reconciliation (multi-block).
 
-**Nice-to-have (later):** elkjs "Adaptive" layout, version history / diff view, app-level
-field encryption, self-serve account-deletion UI — all deferred by design.
+**Nice-to-have (later):** PNG/PDF export (SVG ships in Wave 1.1; raster/PDF is a
+fast-follow), elkjs "Adaptive" layout, version history / diff view, app-level field
+encryption, self-serve account-deletion UI — all deferred by design.
 
 ### Validation Issues Addressed
 
@@ -846,8 +955,65 @@ pre-spike build order (rationale in Decision Impact Analysis).
    (audit trail + ≤30-day SLA clock); execution still manual at launch.
 5. *Backup/restore unarchitected (NFR-R5)* → Supabase Pro daily backups + founder-owned
    quarterly restore-test runbook; edge tier stateless.
-6. *Payment timing vs PRD Open Decision #5* → recorded as an **intentional deferral**; action
-   to update Open Decision #5's trigger to "before premium milestone."
+6. *Payment timing vs PRD Open Decision #5* → recorded as an **intentional deferral**; PRD
+   Open Decision #5's trigger updated to "before the premium milestone" (done 2026-06-02).
+
+**Third-review corrections (2026-06-02).** A third pass (this review) applied the following,
+with matching PRD `correct-course` edits where the PRD was the system of record:
+1. *350KB bundle "budget" misattributed* → relabelled as a self-imposed engineering proxy for
+   the TTI NFRs (the renderer ADR had **retired** the number and the PRD defines no KB NFR);
+   it is not a release gate.
+2. *Premium entitlement under-specified* → paid-feature writes (edit-grant minting, themes,
+   export) now gate **server-side on active `subscriptions.status`**, not the `is_anonymous`
+   claim (which only separates anon-vs-registered).
+3. *Export scope reduced for MVP* → **Wave 1.1 ships SVG export only**; PNG/PDF are a
+   post-launch fast-follow. Applied to FR29 + premium-tier scope in the PRD and to the export
+   feature/mapping here. (Founder decision, 2026-06-02.)
+4. *`noindex` mechanism on `/d/*`* → specified as an **`X-Robots-Tag` response header** (the
+   load-bearing control for the SPA-fallback HTML), with `robots.txt` + no-sitemap as backups.
+5. *Distribution-loop analytics undesigned* → `recipient_open` fires **Worker-side** on the
+   cached read path; recipient→creator attributed across the anon→signup transition.
+6. *Eager anonymous sign-in* → made **lazy** (first create/persist action), avoiding
+   `auth.users` bloat from read-only recipients and keeping recipient cold-load off an auth
+   round-trip; the refresh cookie is **persistent** so anonymous work survives restart (FR17).
+7. *Governance reconciliations executed in the PRD:* NFR-S6 access-token deviation annotated;
+   build-order supersession noted on both PRD build-order lists; Open Decision #5 trigger
+   updated to "before the premium milestone."
+
+Plus a precision fix: the CI perf-budget **frame-time** gate blocks on the 200/500-node
+fixtures (NFR-P8); the 1000-node fixture is the no-crash floor (NFR-P5), not a frame gate.
+
+**Fourth-review corrections (2026-06-02).** A follow-up review surfaced five FR-coverage gaps
+where the architecture under-served an existing PRD requirement (no PRD change needed — these
+were architecture omissions, not PRD defects); all resolved here:
+1. *FR24 recipient → creator unarchitected* → added the **"Create your own" / "Duplicate this"**
+   flow: an always-visible recipient affordance, a new recipient-owned `documents` row (lazy
+   anon uid, fresh slug; re-stamped fences + copied `view_state` on duplicate), and the
+   `recipient_became_creator` conversion event (see Integration Points & Data Flow).
+2. *Lazy anonymous-auth inconsistency* → the **Auth bootstrap** data-flow now matches the
+   Process-pattern: `signInAnonymously()` is deferred to first create/persist (not page load),
+   recipient reads stay unauthenticated, and the refresh cookie is persistent (FR17).
+3. *Multi-block Markdown under-specified* → defined the **block registry** (`lib/markdown.ts`
+   → `[{fenceId, type, source}]`) and **one controller per fence** (flowchart) / lazy viewer
+   per non-flowchart fence, each bound to its `view_state[fenceId]` slice (FR2/FR15a).
+4. *Themes were a field, not an architecture* → added the versioned `theme` schema, the engine
+   **styling API** (`controller.setTheme` → CSS vars/attrs on the SVG), **share-view
+   application** (theme returned on recipient read), and **export serialization** (theme
+   inlined into the SVG) — covering FR28's "shared *and* exported outputs".
+5. *Anonymous delete too implicit* → added the explicit **per-diagram delete path (FR21)**:
+   in-workspace action (anon) / dashboard (premium) → RLS DELETE → `documents` DELETE trigger
+   → cache-purge → the one sanctioned 404 (NFR-R2), distinct from the FR30 account cascade.
+
+**Fifth-review corrections (2026-06-02).** One remaining cross-cutting gap resolved:
+- *Distribution-loop attribution was inconsistent with lazy auth* — `recipient_open` fired at
+  read time when (per the lazy-auth decision) no anon uid yet exists, so it could not be joined
+  to a `recipient_became_creator` keyed on the later uid, breaking the PRD's recipient-open and
+  recipient→creator metrics. **Fix:** a **first-party, non-auth `visitor_id` cookie** is set on
+  the first shared read and is the `distinct_id` for `recipient_open`; on first create the
+  client **aliases `visitor_id` → the anon uid** (PostHog `identify` + `$anon_distinct_id`),
+  merging them into one person so the conversion computes. Eager anon-auth-for-recipients was
+  considered and rejected — it would reintroduce the `auth.users` bloat the lazy-auth fix
+  removed. The anon uid is preserved on premium signup, so identity is stable across the claim.
 
 ### Architecture Completeness Checklist
 
