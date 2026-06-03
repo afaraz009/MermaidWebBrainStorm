@@ -492,3 +492,128 @@ So that I keep spatial context while panned or zoomed into a large diagram.
 **Given** a viewport 1024–1279 px wide
 **When** the workspace first loads
 **Then** the minimap may auto-hide on initial load per the PRD responsive-design table.
+
+## Epic 2: Markdown-Native Authoring Workspace
+
+A user can author and edit in the full live workspace — a Mermaid source editor ↔ rendered Markdown preview ↔ interactive canvas all syncing from one source — with embedded multi-block Mermaid documents, resizable panes, inline syntax errors, and a graceful viewer-fallback for non-flowchart diagram types. The workspace pane count/arrangement is resolved within this epic (PRD Open Decision #3).
+
+### Story 2.1: Mermaid source editor with live-syncing render
+
+As a user,
+I want to edit Mermaid syntax in a real source editor and see the canvas update live without a manual refresh,
+So that authoring and tweaking a diagram feels fast and immediate.
+
+**Acceptance Criteria:**
+
+**Given** the workspace
+**When** it loads
+**Then** a CodeMirror 6 source editor replaces the minimal paste input from Epic 1, with Mermaid-appropriate syntax highlighting (FR1).
+
+**Given** I type or edit Mermaid in the editor
+**When** I pause (~500 ms debounce)
+**Then** the canvas re-renders via a debounced `controller.setSource()` with no manual refresh (FR1).
+
+**Given** a live edit changes the source
+**When** the diagram re-renders
+**Then** the existing `view_state` (collapse / depth / pins) is reconciled against the new source — orphaned fence/node IDs dropped silently — rather than reset (AR6).
+
+**Given** rapid editing
+**When** edits stream in
+**Then** the UI never blocks on render and updates remain responsive (live-sync pattern).
+
+### Story 2.2: Markdown-native source with rendered preview and embedded diagrams
+
+As a user,
+I want to write Markdown containing embedded Mermaid blocks and see both a rendered Markdown preview and the interactive canvas update from the same source,
+So that my diagrams live in their documentation context, not in isolation.
+
+**Acceptance Criteria:**
+
+**Given** a single Markdown source surface
+**When** I write Markdown with one or more ` ```mermaid ` fences
+**Then** `lib/markdown.ts` produces a block registry `[{ fenceId, type, source }]` with a stable `id=` stamped into each fence (stripped before parse) (FR2, AR12).
+
+**Given** the source
+**When** it renders
+**Then** a `react-markdown` preview shows the rendered Markdown and each flowchart fence is a mount point with its own `DiagramController` bound to its `view_state[fenceId]` slice (FR2, AR12).
+
+**Given** an edit to one fence
+**When** the source changes
+**Then** the registry re-stamps and `setSource()` is called on the affected fence(s) only, not the whole document (AR12).
+
+**Given** the single source of truth
+**When** I edit
+**Then** the source, the Markdown preview, and the canvas stay in sync (FR2).
+
+### Story 2.3: Non-flowchart diagram viewer fallback
+
+As a user,
+I want non-flowchart Mermaid types (sequence, class, state, ER, gantt, etc.) to render with pan/zoom and a clear indication that disclosure is flowchart-only,
+So that mixed documents render fully and don't look broken.
+
+**Acceptance Criteria:**
+
+**Given** a Markdown fence whose type is not flowchart/graph
+**When** it renders
+**Then** the per-fence Renderer Router routes it to a lazy-loaded full `mermaid` viewer with pan/zoom only (FR15a, AR12).
+
+**Given** a non-flowchart block
+**When** it displays
+**Then** the disclosure controls render in a disabled state with an explanatory tooltip/badge ("Disclosure is flowchart-only") (FR15a).
+
+**Given** an unknown or future Mermaid type
+**When** it is encountered
+**Then** it falls back to the viewer path automatically rather than erroring (FR15a).
+
+**Given** a non-flowchart block
+**When** the E2E suite runs
+**Then** a test asserts the disclosure controls are disabled-with-explanation (FR15a, NFR-M3)
+**And** the mermaid viewer-fallback and elkjs are code-split so they do not weigh down the recipient bundle (AR12, NFR-P1).
+
+### Story 2.4: Resizable workspace panes
+
+As a user,
+I want to resize the source, preview, and canvas surfaces relative to one another,
+So that I can give space to whatever I'm working on.
+
+**Acceptance Criteria:**
+
+**Given** the workspace layout (pane count/arrangement finalized here per PRD Open Decision #3)
+**When** it renders on a ≥ 1280 px viewport
+**Then** the source, preview, and canvas surfaces are present and resizable relative to each other (FR4).
+
+**Given** a pane divider
+**When** I drag it
+**Then** the adjacent surfaces resize smoothly and the layout persists for the session.
+
+**Given** a 1024–1279 px viewport
+**When** the workspace loads
+**Then** default widths tighten and the minimap may auto-hide, per the responsive-design table.
+
+**Given** a < 768 px (mobile) viewport
+**When** the workspace loads
+**Then** it falls back to read-only/viewer mode with the editor hidden behind an "Open in desktop" prompt (PRD responsive table).
+
+### Story 2.5: Inline Mermaid syntax errors
+
+As a user,
+I want syntax errors surfaced inline in the editor where I can locate and fix them,
+So that I never have to leave the workspace to debug my Mermaid.
+
+**Acceptance Criteria:**
+
+**Given** invalid Mermaid in a fence
+**When** the parser emits a `parseError`
+**Then** the error is surfaced inline in the CodeMirror editor at or near the offending location (FR5).
+
+**Given** an inline error is shown
+**When** the user reads it
+**Then** the user-facing message is distinct from logged technical detail, and the last good render remains visible rather than blanking the canvas (process/error-handling pattern).
+
+**Given** I correct the error
+**When** the source re-parses cleanly
+**Then** the inline error clears and the canvas updates (FR5).
+
+**Given** a multi-block document
+**When** one fence has a syntax error
+**Then** the error is scoped to that fence and the other fences keep rendering (AR12).
