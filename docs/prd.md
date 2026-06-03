@@ -686,6 +686,7 @@ The disclosure family is **flowchart-first by design** (resolved in renderer-res
 - **FR14 [1.1]:** Any user can see a minimap that indicates the current viewport position relative to the full diagram.
 - **FR15 [1.1]:** Any user can pan and zoom the diagram canvas.
 - **FR15a [1.1]:** Any user can render a Markdown document containing **non-flowchart Mermaid diagram types** (sequence, class, state, ER, gantt, etc.) and have them render via Mermaid's renderer with pan/zoom support. The disclosure family does not apply to these diagrams in v1; the UI clearly indicates that disclosure interactions are flowchart-specific. Unknown or future Mermaid types fall back to this viewer path automatically.
+- **FR15b [1.1]:** Any user can switch a flowchart's edge routing to an orthogonal (A\*-based) layout as an alternative to the default side-aware curves. The chosen routing mode is saved with the diagram and reproduced for recipients of a shared link. *(Flowchart / graph diagrams only; non-flowchart viewer fallbacks are unaffected. MVP ships a single on/off mode with fixed routing defaults; per-diagram tuning controls are a post-launch enhancement.)*
 
 ### Persistence & Session Management
 

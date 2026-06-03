@@ -201,6 +201,10 @@ implementation story**.
 
 **Important Decisions (shape architecture):**
 - Hybrid React↔engine binding (controlled `view_state` + imperative commands).
+- Edge routing: side-aware curves (Mermaid-parity **default**) + dagre + **opt-in A\***
+  orthogonal mode (FR15b). A\* is lazy-loaded and persisted per-doc in
+  `view_state.edgeMode`; MVP ships a single on/off mode with fixed routing defaults
+  (no user-facing tunables). Additive — does not change the parity default or invariants.
 - State: Zustand + TanStack Query. Routing: React Router v7 (SPA mode).
 - Edge-cached recipient read path; encryption = Supabase disk-level + access control.
 - PostHog analytics; Sentry monitoring; GitHub Actions CI with a perf-budget gate.
@@ -257,8 +261,11 @@ implementation story**.
   while public read stays a slug capability (below).
 - **`view_state` (soft overlay), keyed by stable fence ID** (`id=…` auto-stamped into
   each ```` ```mermaid ```` fence, stripped before parse): `{ collapsed[], depth?,
-  pins{nodeId→{x,y}} }` per block. Reconciled on parse — orphaned IDs dropped silently.
-  Pins persisted best-effort; pan/zoom/focus/path are ephemeral.
+  pins{nodeId→{x,y}}, edgeMode? ('side-aware'|'dagre'|'astar') }` per block. Reconciled
+  on parse — orphaned IDs dropped silently. Pins + `edgeMode` persisted best-effort;
+  pan/zoom/focus/path are ephemeral. **`edgeMode` (FR15b)** rides the same versioned
+  contract so a shared A\*-routed diagram reproduces on the recipient; note A\* drop-time
+  re-routes all edges and grid-snaps nodes, so it interacts with `pins`.
 - **Shared links open in the author's saved `view_state`.**
 - **`theme` (premium branding, FR28):** `theme jsonb` holds a **versioned theme object**
   (schema in `packages/shared` — palette, fonts, node/edge/cluster styles, optional
@@ -367,7 +374,7 @@ implementation story**.
 
 - **Engine package `@mermaidweb/render` (framework-agnostic)** exposes
   `DiagramController` (`mount/destroy`, commands `focus/path/collapse/expand/setDepth/
-  panTo/resetLayout/setTheme/export`, events `viewStateChange/select/parseError/ready`). React
+  panTo/resetLayout/setTheme/setEdgeMode/export`, events `viewStateChange/select/parseError/ready`). React
   binding (`<DiagramCanvas>` / `useDiagram`) lives app-side, extractable to
   `@mermaidweb/render-react` later. **The engine owns its SVG subtree; React never
   reconciles it.**
@@ -396,9 +403,21 @@ implementation story**.
   in a **disabled state with an explanatory tooltip/badge** ("Disclosure is flowchart-only"),
   so fallback diagrams don't look broken — covered by an E2E test asserting the controls
   are disabled-with-explanation. **Code-split** the editor, the mermaid viewer-fallback,
-  and elkjs to keep the recipient bundle within the self-imposed ~350KB proxy that serves
-  the cold-load / first-render TTI targets (NFR-P1/P2 are time-based; the KB figure is our
-  proxy, not the NFR itself).
+  elkjs, and the **A\* routing module** (FR15b — loaded on demand only when a doc's
+  `view_state.edgeMode === 'astar'`, so side-aware diagrams never pay for it) to keep the
+  recipient bundle within the self-imposed ~350KB proxy that serves the cold-load /
+  first-render TTI targets (NFR-P1/P2 are time-based; the KB figure is our proxy, not the
+  NFR itself).
+- **Edge routing modes (FR15b):** side-aware curves are the Mermaid-parity **default**;
+  dagre and **opt-in A\*** orthogonal routing are alternates, selected via
+  `controller.setEdgeMode` and persisted in `view_state.edgeMode`. A\* is **additive** — it
+  does not change the default look or the `docs/architecture/05` invariants. MVP exposes a
+  single on/off toggle with **fixed routing defaults** (cell size, connectivity, separation
+  hardcoded to spike-validated values); per-diagram tuning is post-MVP. **Perf caveat:**
+  because a shared A\*-routed diagram re-runs A\* on the **recipient's cold load**, the perf
+  gate must include an **A\*-enabled 200-node** first-render/route-time variant against
+  NFR-P1/P2 (see CI/CD); A\* routing cost at 200/500 nodes is currently unmeasured and is the
+  one risk this feature carries.
 - **Theming / branding (FR28, premium):** a document's `theme` (versioned schema in
   `packages/shared`) is applied by the engine as a **styling API** — `controller.setTheme
   (theme)` maps theme tokens to **CSS custom properties + style attributes** on the SVG
@@ -414,8 +433,10 @@ implementation story**.
 - **Environments:** Supabase CLI local (Docker) → per-PR Cloudflare preview + staging
   Supabase → production. Secrets via `wrangler secret`; service-role key only in Workers.
 - **CI/CD (GitHub Actions):** typecheck · lint · Vitest · Playwright (critical paths,
-  NFR-M3) · **perf-budget gate vs 200/500-node fixtures** (NFR-P8) → `wrangler deploy` +
-  `supabase db push`.
+  NFR-M3) · **perf-budget gate vs 200/500-node fixtures** (NFR-P8), **including an
+  A\*-enabled 200-node first-render/route-time variant** (FR15b — a shared A\*-routed doc
+  re-routes on the recipient's cold load, so NFR-P1/P2 must hold with A\* on) →
+  `wrangler deploy` + `supabase db push`.
 - **Monitoring:** Sentry (single error channel, NFR-M4) + Workers/Supabase logs +
   PostHog; retention ≥30 days (NFR-M5).
 - **Scaling:** edge-cached recipient read shields Postgres; 10× spike = Workers
@@ -595,7 +616,7 @@ mermaidweb/
 │   │   │   ├── renderer.ts                   # renderFull → SVG (data-* hooks, __meta)
 │   │   │   ├── drag.ts · pan.ts · connect.ts
 │   │   │   ├── collapse.ts · depth.ts · focus.ts · path.ts · disclosure-overlay.ts
-│   │   │   ├── routing.ts · astar.ts         # optional A* (off by default)
+│   │   │   ├── routing.ts · astar.ts         # A* orthogonal routing (opt-in mode, FR15b; lazy-loaded)
 │   │   │   ├── controller.ts                 # NEW: DiagramController facade
 │   │   │   └── index.ts                      # public API barrel
 │   │   ├── fixtures/                         # fixture_*.mmd + generated 200/500/1000-node
@@ -833,8 +854,9 @@ expressible in the structure as drawn.
 **Functional Requirements (Wave 1.1):**
 - Workspace/editing FR1–5 → `features/{workspace,editor,preview,canvas}` + inline parse errors.
 - Disclosure FR6–11 → `packages/render` (built) + `features/disclosure`.
-- Navigation FR12–15a → `features/{palette,minimap}`, engine pan/zoom, Renderer Router +
-  lazy mermaid viewer.
+- Navigation FR12–15b → `features/{palette,minimap}`, engine pan/zoom, Renderer Router +
+  lazy mermaid viewer; **opt-in A\* edge routing (FR15b)** via `controller.setEdgeMode`
+  (lazy-loaded module, persisted in `view_state.edgeMode`).
 - Persistence/session FR16–21 → Supabase anonymous auth, `documents` + RLS, slug, claim;
   **per-diagram delete (FR21)** via in-workspace action (anon) / account dashboard (premium)
   → DELETE trigger → cache-purge → sanctioned 404 (NFR-R2).
@@ -1014,6 +1036,27 @@ were architecture omissions, not PRD defects); all resolved here:
   merging them into one person so the conversion computes. Eager anon-auth-for-recipients was
   considered and rejected — it would reintroduce the `auth.users` bloat the lazy-auth fix
   removed. The anon uid is preserved on premium signup, so identity is stable across the claim.
+
+**Correct-course (2026-06-03) — A\* routing promoted to MVP (FR15b).** The spike6 A\*
+orthogonal-routing modules (`routing.ts`, `astar.ts`, `gridOverlay.ts`, `astarSettings.ts`)
+were carried into `@mermaidweb/render` but appeared only as an "off-by-default experiment" in
+the file tree — a documentation oversight, not a deliberate exclusion. The founder confirmed
+A\* is wanted in the MVP. Resolved here as an **additive, opt-in** capability (does not touch
+the Mermaid-parity default or the `docs/architecture/05` invariants), with matching PRD
+(FR15b) and epics edits:
+- **Mode + API:** side-aware stays the default; A\* is selected via a new
+  `controller.setEdgeMode('side-aware'|'dagre'|'astar')` command. **Fixed routing defaults for
+  MVP** (no user-facing tunables; cell size / connectivity / separation hardcoded to
+  spike-validated values).
+- **Persistence + parity:** the mode persists per-doc in **`view_state.edgeMode`** (versioned
+  `packages/shared` contract), so a shared A\*-routed diagram reproduces for the recipient
+  (FR23). Note A\*'s drop path re-routes all edges and grid-snaps nodes — it interacts with `pins`.
+- **Bundle:** the A\* module is **lazy-loaded on demand** (only when `view_state.edgeMode ===
+  'astar'`), keeping side-aware diagrams off its weight.
+- **Perf (the one carried risk):** because a shared A\*-doc re-routes on the **recipient's
+  cold load**, the CI perf gate gains an **A\*-enabled 200-node** first-render/route-time
+  variant against NFR-P1/P2. A\* routing cost at 200/500 nodes is currently **unmeasured** —
+  the perf harness (impl step 2) must prove it before A\* shares are safe.
 
 ### Architecture Completeness Checklist
 

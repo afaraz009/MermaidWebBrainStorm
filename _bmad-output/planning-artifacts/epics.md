@@ -42,6 +42,7 @@ This document provides the complete epic and story breakdown for MermaidWeb, dec
 - **FR14 [1.1]:** Any user can see a minimap that indicates the current viewport position relative to the full diagram.
 - **FR15 [1.1]:** Any user can pan and zoom the diagram canvas.
 - **FR15a [1.1]:** Any user can render a Markdown document containing non-flowchart Mermaid types (sequence, class, state, ER, gantt, etc.) via Mermaid's renderer with pan/zoom. The disclosure family does not apply; the UI clearly indicates disclosure is flowchart-specific (controls disabled-with-explanation). Unknown/future types fall back to this viewer path automatically.
+- **FR15b [1.1]:** Any user can switch a flowchart's edge routing to an orthogonal (A\*-based) layout as an alternative to the default side-aware curves; the chosen mode is saved with the diagram and reproduced for recipients of a shared link. (Flowchart/graph only; non-flowchart fallbacks unaffected. MVP = single on/off mode with fixed routing defaults; per-diagram tuning is post-launch.)
 
 **Persistence & Session Management**
 
@@ -137,8 +138,8 @@ This document provides the complete epic and story breakdown for MermaidWeb, dec
 *(Technical/infrastructure requirements derived from the Architecture document that materially shape epics and stories. The Architecture's implementation sequence **intentionally supersedes** the PRD's pre-spike build order — engine extraction + perf gate front-loaded before the backend.)*
 
 - **AR1 — Starter / project init (Epic 1, Story 1):** Scaffold the monorepo and the Vite 8 + React 19 + TypeScript SPA via `npm create vite@latest … --template react-ts`, add `@cloudflare/vite-plugin` + `wrangler` (Workers runtime, bindings, SPA fallback `not_found_handling=single-page-application`) and `@supabase/supabase-js`. Project initialization is the first implementation story.
-- **AR2 — Engine extraction (FIRST implementation priority):** Extract `spike6/src/` → `@mermaidweb/render` (framework-agnostic, React-free) behind a `DiagramController` facade (`mount/destroy/setSource`; commands `focus/path/collapse/expand/setDepth/panTo/resetLayout/setTheme/export`; events `viewStateChange/select/parseError/ready`) with **no behavior change**, git history preserved. The engine owns its SVG subtree; React never reconciles it.
-- **AR3 — Perf harness + CI perf-gate (impl step 2, before backend):** 200/500/1000-node fixtures + frame-time/cold-load probes → a CI perf-budget gate. Frame-time gate blocks on 200-node (NFR-P3) and 500-node (NFR-P4) fixtures; the 1000-node fixture is the no-crash floor (NFR-P5).
+- **AR2 — Engine extraction (FIRST implementation priority):** Extract `spike6/src/` → `@mermaidweb/render` (framework-agnostic, React-free) behind a `DiagramController` facade (`mount/destroy/setSource`; commands `focus/path/collapse/expand/setDepth/panTo/resetLayout/setTheme/setEdgeMode/export`; events `viewStateChange/select/parseError/ready`) with **no behavior change**, git history preserved. The engine owns its SVG subtree; React never reconciles it.
+- **AR3 — Perf harness + CI perf-gate (impl step 2, before backend):** 200/500/1000-node fixtures + frame-time/cold-load probes → a CI perf-budget gate. Frame-time gate blocks on 200-node (NFR-P3) and 500-node (NFR-P4) fixtures; the 1000-node fixture is the no-crash floor (NFR-P5). **Also gates an A\*-enabled 200-node first-render/route-time variant** (FR15b — a shared A\*-routed diagram re-routes on the recipient's cold load, so NFR-P1/P2 must hold with A\* on); A\* routing cost at 200/500 nodes is currently unmeasured and this gate is what proves it safe.
 - **AR4 — Monorepo structure (pnpm workspaces):** `packages/render` (engine), `packages/shared` (types + Zod + casing maps), `apps/web` (React SPA + its Cloudflare Worker under `apps/web/worker/`). Feature-first under `apps/web/src/features/<feature>/`. Tests co-located (`*.test.tsx`, Vitest); Playwright E2E under `e2e/`.
 - **AR5 — Single DB↔TS mapping seam:** `packages/shared` is the ONLY place snake_case↔camelCase mapping (Zod transforms / `mapDocument`) and shared validation occur. No DTO redefinition or casing leak in app/engine code.
 - **AR6 — Supabase data plane / migrations:** Postgres schema + RLS for `documents`, `document_grants`, `subscriptions`, `deletion_requests`; SECURITY DEFINER RPCs `get_shared_document`, `update_shared_document`, `touch_document`; `documents` UPDATE/DELETE webhook → cache-purge; `ON DELETE CASCADE` from `auth.users`. Migrations are in-repo Supabase CLI SQL. Source of truth = Markdown text; IR/layout/SVG always recomputed by the engine, never persisted. `view_state` jsonb keyed by stable fence IDs.
@@ -154,6 +155,7 @@ This document provides the complete epic and story breakdown for MermaidWeb, dec
 - **AR16 — Payment processor (Wave-1.1, just-in-time):** the payment *capability* (hosted checkout, FR27/NFR-S7) is in Wave-1.1 scope; only *processor selection* (Stripe vs Paddle) is deferred to the premium milestone. Architecture is processor-agnostic (webhook Worker + `subscriptions` row), so this blocks only the premium milestone, not the architecture.
 - **AR17 — CI/CD + environments + ops:** GitHub Actions: typecheck · lint · Vitest · Playwright (critical paths) · perf-budget gate → `wrangler deploy` + `supabase db push`. Environments: Supabase CLI local (Docker) → per-PR Cloudflare preview + staging Supabase → production. Supabase Pro daily backups + founder-owned quarterly restore-test runbook (NFR-R5). `X-Robots-Tag: noindex, nofollow` response header on every `/d/*` route + `robots.txt Disallow: /d/` + no sitemap (NFR-S3).
 - **AR18 — Account-deletion cascade (FR30/NFR-S8):** launch-ready intake (in-app re-auth'd "Request account deletion" → `deletion_requests` audit row + ≤30-day SLA clock) + a service-role cascade routine (owned documents + per-slug cache purge → subscription cancel at processor + local row → PostHog person delete → `auth.users` last). Manual runbook drives execution at launch; self-serve automation is a fast-follow.
+- **AR19 — Edge routing modes (FR15b):** the engine carries three edge-routing modes — **side-aware curves (Mermaid-parity default)**, dagre, and **opt-in A\*** orthogonal routing (the spike6 `routing.ts`/`astar.ts`/`gridOverlay.ts` modules). A\* is **additive** — it does not change the default look or the `docs/architecture/05` invariants. Selected via `controller.setEdgeMode('side-aware'|'dagre'|'astar')`; **MVP exposes a single on/off toggle with fixed routing defaults** (cell size / connectivity / separation hardcoded to spike-validated values — no user tunables). The mode persists per-doc in **`view_state.edgeMode`** (versioned `packages/shared` contract) so a shared A\*-routed diagram reproduces for the recipient (FR23). The A\* module is **lazy-loaded on demand** (only when `view_state.edgeMode === 'astar'`) so side-aware diagrams never pay its bundle weight (NFR-P1). Carries the AR3 A\*-enabled perf-gate obligation.
 
 ### UX Design Requirements
 
@@ -161,7 +163,7 @@ _Not applicable — no UX Design document exists. The PRD explicitly defers the 
 
 ### FR Coverage Map
 
-_All 33 Wave 1.1 FRs mapped to an epic; none missed. (FR31–38 deferred to Waves 1.2/1.3.)_
+_All 34 Wave 1.1 FRs mapped to an epic; none missed. (FR31–38 deferred to Waves 1.2/1.3.)_
 
 - **FR1:** Epic 2 — Edit Mermaid source with live render
 - **FR2:** Epic 2 — Markdown w/ embedded Mermaid → preview + canvas from one source
@@ -179,6 +181,7 @@ _All 33 Wave 1.1 FRs mapped to an epic; none missed. (FR31–38 deferred to Wave
 - **FR14:** Epic 1 — Minimap with viewport indicator
 - **FR15:** Epic 1 — Pan and zoom the canvas
 - **FR15a:** Epic 2 — Non-flowchart Mermaid types render via viewer fallback (per-fence Renderer Router; disclosure controls disabled-with-explanation)
+- **FR15b:** Epic 1 — Opt-in A\* orthogonal edge routing (side-aware default), persisted per-doc and reproduced for recipients
 - **FR16:** Epic 3 — Create a diagram without signing up
 - **FR17:** Epic 3 — Anonymous diagrams persist across browser sessions
 - **FR18:** Epic 3 — Cryptographically random short URL slug (no content encoding)
@@ -202,8 +205,8 @@ _All 33 Wave 1.1 FRs mapped to an epic; none missed. (FR31–38 deferred to Wave
 
 ### Epic 1: Interactive Comprehension Canvas
 A user can load a Mermaid flowchart and interactively explore it with the full progressive-disclosure family (collapse/expand, focus, path, depth slider) plus navigation (command palette, minimap) and pan/zoom — the core comprehension experience that is the product's reason to exist. Carries the foundation, because this is where the engine first reaches a user: pnpm monorepo + Vite/React/Cloudflare project init (AR1), extraction of `spike6/src/` → `@mermaidweb/render` + `DiagramController` facade with no behavior change (AR2), the 200/500/1000-node perf harness + CI perf-budget gate (AR3), app shell + React `<DiagramCanvas>` binding (engine owns its SVG subtree), then the already-built disclosure family ported onto the package API. Obeys engine-conformance Rule 0 + the `docs/architecture/05` invariants (AR11).
-**FRs covered:** FR3, FR6, FR7, FR8, FR9, FR10, FR11, FR12, FR13, FR14, FR15
-**NFRs anchored:** P3, P4, P5, P8 (perf gate); M1, M2, M3 (CI, local-run, critical-path tests)
+**FRs covered:** FR3, FR6, FR7, FR8, FR9, FR10, FR11, FR12, FR13, FR14, FR15, FR15b
+**NFRs anchored:** P1, P2, P3, P4, P5, P8 (perf gate, incl. A\*-enabled variant); M1, M2, M3 (CI, local-run, critical-path tests)
 **Standalone:** delivers the interactive comprehension canvas fed by a minimal source input; enables every later epic.
 
 ### Epic 2: Markdown-Native Authoring Workspace
@@ -212,7 +215,7 @@ A user can author and edit in the full live workspace — a Mermaid source edito
 **Standalone:** upgrades Epic 1's minimal input into the real workspace; complete authoring surface.
 
 ### Epic 3: Persistence, Sharing & the Distribution Loop
-A user can create without signup, have anonymous work persist across sessions, get a clean cryptographically-random short share URL, delete their own diagrams, and have recipients land in a fully interactive workspace and become creators in one click — instrumented with the distribution-loop analytics the 6-week gate rides on. Mechanism: Supabase data plane (schema + RLS + lazy anonymous auth, AR6/AR7), `get_shared_document` RPC, the Hono recipient-read Worker (edge-cached) + `/api/auth/*` refresh-cookie route + `documents` write-trigger → `/internal/cache/purge` (AR8/AR9), sampled retention touch (AR10), and the PostHog `visitor_id`→anon-uid analytics identity bridge with Worker-side `recipient_open` (AR14). Completes the free tier; CI/CD + ops + privacy headers (AR17) land here.
+A user can create without signup, have anonymous work persist across sessions, get a clean cryptographically-random short share URL, delete their own diagrams, and have recipients land in a fully interactive workspace and become creators in one click — instrumented with the distribution-loop analytics the 6-week gate rides on. Mechanism: Supabase data plane (schema + RLS + lazy anonymous auth, AR6/AR7), `get_shared_document` RPC, the Hono recipient-read Worker (edge-cached) + `/api/auth/*` refresh-cookie route + `documents` write-trigger → `/internal/cache/purge` (AR8/AR9), sampled retention touch (AR10), and the PostHog `visitor_id`→anon-uid analytics identity bridge with Worker-side `recipient_open` (AR14). Recipient parity (FR23) includes the author's **saved edge-routing mode** — a shared A\*-routed diagram reproduces via `view_state.edgeMode` (FR15b, AR19). Completes the free tier; CI/CD + ops + privacy headers (AR17) land here.
 **FRs covered:** FR16, FR17, FR18, FR21, FR22, FR23, FR24, FR39, FR41
 **NFRs anchored:** S1–S4 (encryption, slugs, noindex, TLS); R1–R3, R6 (durability, no-404, retention, degradation); P1, P2, P7 (cold-load, first-render, save→URL); Sc1, Sc2 (viral-spike headroom)
 **Standalone:** completes the free product end-to-end.
@@ -263,7 +266,7 @@ So that the validated engine is reusable under React without React ever reconcil
 
 **Given** `spike6/src/`
 **When** it is migrated into `packages/render/src` (git history preserved)
-**Then** the public API barrel exposes `parseToIR`, `layout`, `renderFull`, `attachDrag`, `deriveEffectiveIR`, and a `DiagramController` facade with `mount`/`destroy`/`setSource`, commands (`focus`/`path`/`collapse`/`expand`/`setDepth`/`panTo`/`resetLayout`/`setTheme`/`export`), and events (`viewStateChange`/`select`/`parseError`/`ready`) (AR2).
+**Then** the public API barrel exposes `parseToIR`, `layout`, `renderFull`, `attachDrag`, `deriveEffectiveIR`, and a `DiagramController` facade with `mount`/`destroy`/`setSource`, commands (`focus`/`path`/`collapse`/`expand`/`setDepth`/`panTo`/`resetLayout`/`setTheme`/`setEdgeMode`/`export`), and events (`viewStateChange`/`select`/`parseError`/`ready`) (AR2).
 
 **Given** the extracted engine
 **When** the existing harness and fixtures run
@@ -298,6 +301,11 @@ So that the unmeasured-performance risk is closed and any regression blocks rele
 **Given** the 1000-node fixture
 **When** it is rendered and basically interacted with
 **Then** it does not crash — the no-crash floor (NFR-P5) — and is asserted as such without a frame-time gate.
+
+**Given** the 200-node fixture with edge routing set to A\* (`view_state.edgeMode = 'astar'`)
+**When** cold-load first-render and A\* route-time are probed
+**Then** the gate asserts they meet the recipient cold-load / first-render targets (NFR-P1/P2) with A\* on, since a shared A\*-routed diagram re-routes on the recipient (FR15b, AR3, AR19)
+**And** if the A\* variant cannot meet the budget, that is surfaced as the carried perf risk before A\* shares ship.
 
 **Given** a PR that regresses a perf budget
 **When** CI runs
@@ -492,6 +500,38 @@ So that I keep spatial context while panned or zoomed into a large diagram.
 **Given** a viewport 1024–1279 px wide
 **When** the workspace first loads
 **Then** the minimap may auto-hide on initial load per the PRD responsive-design table.
+
+### Story 1.12: Opt-in A* orthogonal edge routing
+
+As a user,
+I want to switch a flowchart's edges to orthogonal (A*) routing instead of the default curves,
+So that I can get the clean right-angled edge style architecture diagrams often call for.
+
+**Acceptance Criteria:**
+
+**Given** a rendered flowchart (default side-aware curves)
+**When** I toggle the edge-routing control to A*
+**Then** edges re-route orthogonally via `controller.setEdgeMode('astar')` and the side-aware/dagre default is otherwise unchanged (FR15b, AR19).
+
+**Given** the MVP scope
+**When** A* is enabled
+**Then** it runs with **fixed routing defaults** (cell size / connectivity / separation hardcoded to spike-validated values) — a single on/off toggle with no user-facing tuning controls (per-diagram tuning is a post-launch enhancement) (FR15b, AR19).
+
+**Given** I have set a diagram to A* routing and saved it
+**When** the document is reloaded or opened by a recipient of a shared link
+**Then** the routing mode is restored from `view_state.edgeMode` and the recipient sees the same A*-routed edges (FR15b, FR23, AR6/AR19).
+
+**Given** a diagram using the default side-aware routing
+**When** the bundle is analyzed
+**Then** the A* module is **not** in the initial/critical bundle — it is lazy-loaded on demand only when `view_state.edgeMode === 'astar'` (NFR-P1, AR19).
+
+**Given** a 200-node diagram with A* enabled
+**When** the perf gate runs (Story 1.3)
+**Then** cold-load first-render and A* route-time meet NFR-P1/P2 with A* on; failure to meet the budget is surfaced as the carried perf risk before A* shares ship (AR3, AR19).
+
+**Given** A* is the active mode
+**When** I drag a node
+**Then** drop-time re-routing and grid-snap behave per the engine's A* drop path (interacting with pins as documented), preserving engine-conformance Rule 0 and the `docs/architecture/05` invariants (AR11).
 
 ## Epic 2: Markdown-Native Authoring Workspace
 
